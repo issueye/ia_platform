@@ -6,7 +6,8 @@
       "Bash(gofmt:*)",
       "Bash(go work sync:*)",
       "Bash(go env:*)",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "Bash(go list:*)"
     ]
   }
 }
