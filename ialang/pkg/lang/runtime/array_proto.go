@@ -6,24 +6,24 @@ import (
 	"sort"
 	"strings"
 
-	rttypes "ialang/pkg/lang/runtime/types"
+	common "iacommon/pkg/ialang/value"
 )
 
-var arrayPrototype rttypes.Object
+var arrayPrototype common.Object
 
-func GetArrayPrototype() rttypes.Object {
+func GetArrayPrototype() common.Object {
 	if arrayPrototype == nil {
 		arrayPrototype = buildArrayPrototype()
 	}
 	return arrayPrototype
 }
 
-func buildArrayPrototype() rttypes.Object {
-	proto := rttypes.Object{}
+func buildArrayPrototype() common.Object {
+	proto := common.Object{}
 
-	proto["sort"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
-		result := make(rttypes.Array, len(arr))
+	proto["sort"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
+		result := make(common.Array, len(arr))
 		copy(result, arr)
 		sort.Slice(result, func(i, j int) bool {
 			a, aok := result[i].(float64)
@@ -36,24 +36,24 @@ func buildArrayPrototype() rttypes.Object {
 		return result, nil
 	})
 
-	proto["reverse"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
-		result := make(rttypes.Array, len(arr))
+	proto["reverse"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
+		result := make(common.Array, len(arr))
 		for i := 0; i < len(arr); i++ {
 			result[i] = arr[len(arr)-1-i]
 		}
 		return result, nil
 	})
 
-	proto["map"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["map"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("map expects 1 callback arg, got %d", len(args)-1)
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		callback := args[0]
-		result := make(rttypes.Array, len(arr))
+		result := make(common.Array, len(arr))
 		for i, item := range arr {
-			mapped, err := callCallable(callback, []rttypes.Value{item, float64(i), arr}, "array.map")
+			mapped, err := callCallable(callback, []common.Value{item, float64(i), arr}, "array.map")
 			if err != nil {
 				return nil, err
 			}
@@ -62,15 +62,15 @@ func buildArrayPrototype() rttypes.Object {
 		return result, nil
 	})
 
-	proto["filter"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["filter"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("filter expects 1 callback arg, got %d", len(args)-1)
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		callback := args[0]
-		result := make(rttypes.Array, 0, len(arr))
+		result := make(common.Array, 0, len(arr))
 		for i, item := range arr {
-			keep, err := callCallable(callback, []rttypes.Value{item, float64(i), arr}, "array.filter")
+			keep, err := callCallable(callback, []common.Value{item, float64(i), arr}, "array.filter")
 			if err != nil {
 				return nil, err
 			}
@@ -81,14 +81,14 @@ func buildArrayPrototype() rttypes.Object {
 		return result, nil
 	})
 
-	proto["find"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["find"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("find expects 1 callback arg, got %d", len(args)-1)
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		callback := args[0]
 		for i, item := range arr {
-			matched, err := callCallable(callback, []rttypes.Value{item, float64(i), arr}, "array.find")
+			matched, err := callCallable(callback, []common.Value{item, float64(i), arr}, "array.find")
 			if err != nil {
 				return nil, err
 			}
@@ -99,14 +99,14 @@ func buildArrayPrototype() rttypes.Object {
 		return nil, nil
 	})
 
-	proto["findIndex"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["findIndex"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("findIndex expects 1 callback arg, got %d", len(args)-1)
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		callback := args[0]
 		for i, item := range arr {
-			matched, err := callCallable(callback, []rttypes.Value{item, float64(i), arr}, "array.findIndex")
+			matched, err := callCallable(callback, []common.Value{item, float64(i), arr}, "array.findIndex")
 			if err != nil {
 				return nil, err
 			}
@@ -117,28 +117,28 @@ func buildArrayPrototype() rttypes.Object {
 		return float64(-1), nil
 	})
 
-	proto["forEach"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["forEach"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("forEach expects 1 callback arg, got %d", len(args)-1)
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		callback := args[0]
 		for i, item := range arr {
-			if _, err := callCallable(callback, []rttypes.Value{item, float64(i), arr}, "array.forEach"); err != nil {
+			if _, err := callCallable(callback, []common.Value{item, float64(i), arr}, "array.forEach"); err != nil {
 				return nil, err
 			}
 		}
 		return nil, nil
 	})
 
-	proto["some"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["some"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("some expects 1 callback arg, got %d", len(args)-1)
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		callback := args[0]
 		for i, item := range arr {
-			matched, err := callCallable(callback, []rttypes.Value{item, float64(i), arr}, "array.some")
+			matched, err := callCallable(callback, []common.Value{item, float64(i), arr}, "array.some")
 			if err != nil {
 				return nil, err
 			}
@@ -149,14 +149,14 @@ func buildArrayPrototype() rttypes.Object {
 		return false, nil
 	})
 
-	proto["every"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["every"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("every expects 1 callback arg, got %d", len(args)-1)
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		callback := args[0]
 		for i, item := range arr {
-			matched, err := callCallable(callback, []rttypes.Value{item, float64(i), arr}, "array.every")
+			matched, err := callCallable(callback, []common.Value{item, float64(i), arr}, "array.every")
 			if err != nil {
 				return nil, err
 			}
@@ -167,17 +167,17 @@ func buildArrayPrototype() rttypes.Object {
 		return true, nil
 	})
 
-	proto["reduce"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["reduce"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 || len(args) > 3 {
 			return nil, fmt.Errorf("reduce expects callback and optional initial value, got %d args", len(args)-1)
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		callback := args[0]
 		if len(arr) == 0 && len(args) < 3 {
 			return nil, fmt.Errorf("reduce of empty array with no initial value")
 		}
 
-		var acc rttypes.Value
+		var acc common.Value
 		start := 0
 		if len(args) == 3 {
 			acc = args[1]
@@ -186,7 +186,7 @@ func buildArrayPrototype() rttypes.Object {
 			start = 1
 		}
 		for i := start; i < len(arr); i++ {
-			next, err := callCallable(callback, []rttypes.Value{acc, arr[i], float64(i), arr}, "array.reduce")
+			next, err := callCallable(callback, []common.Value{acc, arr[i], float64(i), arr}, "array.reduce")
 			if err != nil {
 				return nil, err
 			}
@@ -195,11 +195,11 @@ func buildArrayPrototype() rttypes.Object {
 		return acc, nil
 	})
 
-	proto["includes"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["includes"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("includes expects 1 arg, got %d", len(args))
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		target := args[0]
 		for _, v := range arr {
 			if valueEqual(v, target) {
@@ -209,8 +209,8 @@ func buildArrayPrototype() rttypes.Object {
 		return false, nil
 	})
 
-	proto["join"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
+	proto["join"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
 		sep := ","
 		if len(args) >= 2 {
 			if s, ok := args[0].(string); ok {
@@ -224,11 +224,11 @@ func buildArrayPrototype() rttypes.Object {
 		return strings.Join(strs, sep), nil
 	})
 
-	proto["indexOf"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["indexOf"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("indexOf expects 1 arg, got %d", len(args))
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		target := args[0]
 		fromIdx := 0
 		if len(args) >= 2 {
@@ -250,11 +250,11 @@ func buildArrayPrototype() rttypes.Object {
 		return float64(-1), nil
 	})
 
-	proto["lastIndexOf"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["lastIndexOf"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("lastIndexOf expects 1 arg, got %d", len(args))
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		target := args[0]
 		fromIdx := len(arr) - 1
 		if len(args) >= 2 {
@@ -276,11 +276,11 @@ func buildArrayPrototype() rttypes.Object {
 		return float64(-1), nil
 	})
 
-	proto["slice"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["slice"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("slice expects 1 arg, got %d", len(args))
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		start, ok := args[0].(float64)
 		if !ok {
 			return nil, fmt.Errorf("slice expects number for start")
@@ -293,7 +293,7 @@ func buildArrayPrototype() rttypes.Object {
 			st = 0
 		}
 		if st >= len(arr) {
-			return rttypes.Array{}, nil
+			return common.Array{}, nil
 		}
 		end := len(arr)
 		if len(args) >= 2 {
@@ -308,15 +308,15 @@ func buildArrayPrototype() rttypes.Object {
 			end = len(arr)
 		}
 		if st >= end {
-			return rttypes.Array{}, nil
+			return common.Array{}, nil
 		}
-		result := make(rttypes.Array, end-st)
+		result := make(common.Array, end-st)
 		copy(result, arr[st:end])
 		return result, nil
 	})
 
-	proto["flat"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
+	proto["flat"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
 		depth := 1
 		if len(args) >= 2 {
 			if d, ok := args[0].(float64); ok {
@@ -326,22 +326,22 @@ func buildArrayPrototype() rttypes.Object {
 		return flattenArray(arr, depth), nil
 	})
 
-	proto["fill"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["fill"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("fill expects 1 arg, got %d", len(args))
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		val := args[0]
-		result := make(rttypes.Array, len(arr))
+		result := make(common.Array, len(arr))
 		for i := 0; i < len(arr); i++ {
 			result[i] = val
 		}
 		return result, nil
 	})
 
-	proto["shuffle"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
-		result := make(rttypes.Array, len(arr))
+	proto["shuffle"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
+		result := make(common.Array, len(arr))
 		copy(result, arr)
 		rand.Shuffle(len(result), func(i, j int) {
 			result[i], result[j] = result[j], result[i]
@@ -349,21 +349,21 @@ func buildArrayPrototype() rttypes.Object {
 		return result, nil
 	})
 
-	proto["concat"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
+	proto["concat"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
 		totalLen := len(arr)
 		for _, arg := range args[:len(args)-1] {
-			if a, ok := arg.(rttypes.Array); ok {
+			if a, ok := arg.(common.Array); ok {
 				totalLen += len(a)
 				continue
 			}
 			totalLen++
 		}
 
-		result := make(rttypes.Array, len(arr), totalLen)
+		result := make(common.Array, len(arr), totalLen)
 		copy(result, arr)
 		for _, arg := range args[:len(args)-1] {
-			if a, ok := arg.(rttypes.Array); ok {
+			if a, ok := arg.(common.Array); ok {
 				result = append(result, a...)
 				continue
 			}
@@ -372,47 +372,47 @@ func buildArrayPrototype() rttypes.Object {
 		return result, nil
 	})
 
-	proto["push"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
+	proto["push"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
 		addCount := len(args) - 1
 		result := append(arr, args[:addCount]...)
 		return result, nil
 	})
 
-	proto["pop"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
+	proto["pop"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
 		if len(arr) == 0 {
-			return rttypes.Array{}, nil
+			return common.Array{}, nil
 		}
-		result := make(rttypes.Array, len(arr)-1)
+		result := make(common.Array, len(arr)-1)
 		copy(result, arr[:len(arr)-1])
 		return result, nil
 	})
 
-	proto["unshift"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
+	proto["unshift"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
 		prefixCount := len(args) - 1
-		result := make(rttypes.Array, prefixCount+len(arr))
+		result := make(common.Array, prefixCount+len(arr))
 		copy(result[:prefixCount], args[:prefixCount])
 		copy(result[prefixCount:], arr)
 		return result, nil
 	})
 
-	proto["shift"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
+	proto["shift"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
 		if len(arr) == 0 {
-			return rttypes.Array{}, nil
+			return common.Array{}, nil
 		}
-		result := make(rttypes.Array, len(arr)-1)
+		result := make(common.Array, len(arr)-1)
 		copy(result, arr[1:])
 		return result, nil
 	})
 
-	proto["at"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["at"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("at expects 1 arg, got %d", len(args))
 		}
-		arr := args[len(args)-1].(rttypes.Array)
+		arr := args[len(args)-1].(common.Array)
 		idx, ok := args[0].(float64)
 		if !ok {
 			return nil, fmt.Errorf("at expects number")
@@ -430,15 +430,15 @@ func buildArrayPrototype() rttypes.Object {
 	return proto
 }
 
-func flattenArray(arr rttypes.Array, depth int) rttypes.Array {
+func flattenArray(arr common.Array, depth int) common.Array {
 	if depth <= 0 {
-		result := make(rttypes.Array, len(arr))
+		result := make(common.Array, len(arr))
 		copy(result, arr)
 		return result
 	}
-	result := make(rttypes.Array, 0)
+	result := make(common.Array, 0)
 	for _, v := range arr {
-		if subArr, ok := v.(rttypes.Array); ok {
+		if subArr, ok := v.(common.Array); ok {
 			flat := flattenArray(subArr, depth-1)
 			result = append(result, flat...)
 		} else {
@@ -448,9 +448,9 @@ func flattenArray(arr rttypes.Array, depth int) rttypes.Array {
 	return result
 }
 
-func arrayProtoLength() rttypes.NativeFunction {
-	return func(args []rttypes.Value) (rttypes.Value, error) {
-		arr := args[len(args)-1].(rttypes.Array)
+func arrayProtoLength() common.NativeFunction {
+	return func(args []common.Value) (common.Value, error) {
+		arr := args[len(args)-1].(common.Array)
 		return float64(len(arr)), nil
 	}
 }

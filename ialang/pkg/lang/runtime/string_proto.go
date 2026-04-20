@@ -5,22 +5,22 @@ import (
 	"strconv"
 	"strings"
 
-	rttypes "ialang/pkg/lang/runtime/types"
+	common "iacommon/pkg/ialang/value"
 )
 
-var stringPrototype rttypes.Object
+var stringPrototype common.Object
 
-func GetStringPrototype() rttypes.Object {
+func GetStringPrototype() common.Object {
 	if stringPrototype == nil {
 		stringPrototype = buildStringPrototype()
 	}
 	return stringPrototype
 }
 
-func buildStringPrototype() rttypes.Object {
-	proto := rttypes.Object{}
+func buildStringPrototype() common.Object {
+	proto := common.Object{}
 
-	proto["split"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["split"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("split expects 1 arg, got %d", len(args))
 		}
@@ -30,19 +30,19 @@ func buildStringPrototype() rttypes.Object {
 		}
 		s := args[len(args)-1].(string)
 		parts := strings.Split(s, sep)
-		arr := make(rttypes.Array, 0, len(parts))
+		arr := make(common.Array, 0, len(parts))
 		for _, p := range parts {
 			arr = append(arr, p)
 		}
 		return arr, nil
 	})
 
-	proto["trim"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["trim"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		s := args[len(args)-1].(string)
 		return strings.TrimSpace(s), nil
 	})
 
-	proto["trimLeft"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["trimLeft"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		s := args[len(args)-1].(string)
 		if len(args) >= 2 {
 			cutset, ok := args[0].(string)
@@ -53,7 +53,7 @@ func buildStringPrototype() rttypes.Object {
 		return strings.TrimSpace(s), nil
 	})
 
-	proto["trimRight"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["trimRight"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		s := args[len(args)-1].(string)
 		if len(args) >= 2 {
 			cutset, ok := args[0].(string)
@@ -64,7 +64,7 @@ func buildStringPrototype() rttypes.Object {
 		return strings.TrimSpace(s), nil
 	})
 
-	proto["replace"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["replace"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("replace expects 2 args, got %d", len(args))
 		}
@@ -77,7 +77,7 @@ func buildStringPrototype() rttypes.Object {
 		return strings.ReplaceAll(s, old, nw), nil
 	})
 
-	proto["replaceAll"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["replaceAll"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("replaceAll expects 2 args, got %d", len(args))
 		}
@@ -90,17 +90,17 @@ func buildStringPrototype() rttypes.Object {
 		return strings.ReplaceAll(s, old, nw), nil
 	})
 
-	proto["toLowerCase"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["toLowerCase"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		s := args[len(args)-1].(string)
 		return strings.ToLower(s), nil
 	})
 
-	proto["toUpperCase"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["toUpperCase"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		s := args[len(args)-1].(string)
 		return strings.ToUpper(s), nil
 	})
 
-	proto["startsWith"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["startsWith"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("startsWith expects 1 arg, got %d", len(args))
 		}
@@ -112,7 +112,7 @@ func buildStringPrototype() rttypes.Object {
 		return strings.HasPrefix(s, prefix), nil
 	})
 
-	proto["endsWith"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["endsWith"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("endsWith expects 1 arg, got %d", len(args))
 		}
@@ -124,7 +124,7 @@ func buildStringPrototype() rttypes.Object {
 		return strings.HasSuffix(s, suffix), nil
 	})
 
-	proto["contains"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["contains"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("contains expects 1 arg, got %d", len(args))
 		}
@@ -136,7 +136,7 @@ func buildStringPrototype() rttypes.Object {
 		return strings.Contains(s, substr), nil
 	})
 
-	proto["indexOf"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["indexOf"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("indexOf expects 1 arg, got %d", len(args))
 		}
@@ -148,7 +148,7 @@ func buildStringPrototype() rttypes.Object {
 		return float64(strings.Index(s, substr)), nil
 	})
 
-	proto["repeat"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["repeat"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("repeat expects 1 arg, got %d", len(args))
 		}
@@ -160,7 +160,7 @@ func buildStringPrototype() rttypes.Object {
 		return strings.Repeat(s, int(n)), nil
 	})
 
-	proto["padStart"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["padStart"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("padStart expects 2 args, got %d", len(args))
 		}
@@ -177,7 +177,7 @@ func buildStringPrototype() rttypes.Object {
 		return padding[:int(length)-len(s)] + s, nil
 	})
 
-	proto["padEnd"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["padEnd"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("padEnd expects 2 args, got %d", len(args))
 		}
@@ -194,7 +194,7 @@ func buildStringPrototype() rttypes.Object {
 		return s + padding[:int(length)-len(s)], nil
 	})
 
-	proto["parseInt"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["parseInt"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		s := args[len(args)-1].(string)
 		n, err := strconv.ParseFloat(s, 64)
 		if err != nil {
@@ -203,7 +203,7 @@ func buildStringPrototype() rttypes.Object {
 		return float64(int(n)), nil
 	})
 
-	proto["parseFloat"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["parseFloat"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		s := args[len(args)-1].(string)
 		n, err := strconv.ParseFloat(s, 64)
 		if err != nil {
@@ -212,7 +212,7 @@ func buildStringPrototype() rttypes.Object {
 		return n, nil
 	})
 
-	proto["substring"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["substring"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("substring expects 1 arg, got %d", len(args))
 		}
@@ -244,7 +244,7 @@ func buildStringPrototype() rttypes.Object {
 		return s[st:], nil
 	})
 
-	proto["charAt"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["charAt"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("charAt expects 1 arg, got %d", len(args))
 		}
@@ -260,7 +260,7 @@ func buildStringPrototype() rttypes.Object {
 		return string(s[i]), nil
 	})
 
-	proto["slice"] = rttypes.NativeFunction(func(args []rttypes.Value) (rttypes.Value, error) {
+	proto["slice"] = common.NativeFunction(func(args []common.Value) (common.Value, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("slice expects 1 arg, got %d", len(args))
 		}

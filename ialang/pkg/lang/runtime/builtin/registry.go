@@ -1,11 +1,12 @@
 package builtin
 
 import (
+	common "iacommon/pkg/ialang/value"
 	"ialang/pkg/lang/runtime"
 	rttypes "ialang/pkg/lang/runtime/types"
 )
 
-func DefaultModules(asyncRuntime rttypes.AsyncRuntime) map[string]rttypes.Value {
+func DefaultModules(asyncRuntime rttypes.AsyncRuntime) map[string]common.Value {
 	if asyncRuntime == nil {
 		asyncRuntime = runtime.NewGoroutineRuntime()
 	}
@@ -56,7 +57,7 @@ func DefaultModules(asyncRuntime rttypes.AsyncRuntime) map[string]rttypes.Value 
 	arrayModule := newArrayModule()
 	promiseModule := newPromiseModule()
 
-	modules := map[string]rttypes.Value{
+	modules := map[string]common.Value{
 		"@agent/sdk": newAgentSDKModule(asyncRuntime),
 	}
 
@@ -116,10 +117,10 @@ func DefaultModules(asyncRuntime rttypes.AsyncRuntime) map[string]rttypes.Value 
 type moduleAliasGroup struct {
 	plain    []string
 	prefixed []string
-	value    rttypes.Value
+	value    common.Value
 }
 
-func registerModuleAliasGroups(modules map[string]rttypes.Value, groups []moduleAliasGroup, prefixes []string) {
+func registerModuleAliasGroups(modules map[string]common.Value, groups []moduleAliasGroup, prefixes []string) {
 	for _, group := range groups {
 		for _, key := range group.plain {
 			modules[key] = group.value
