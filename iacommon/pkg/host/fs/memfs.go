@@ -1,6 +1,8 @@
 package fs
 
-import "context"
+import (
+	"context"
+)
 
 type MemFSProvider struct{}
 

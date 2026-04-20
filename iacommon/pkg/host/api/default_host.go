@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	hostfs "iavm/pkg/host/fs"
-	hostnet "iavm/pkg/host/network"
+	hostfs "iacommon/pkg/host/fs"
+	hostnet "iacommon/pkg/host/network"
 )
 
 var (

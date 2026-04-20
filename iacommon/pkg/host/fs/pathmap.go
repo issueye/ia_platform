@@ -11,8 +11,8 @@ import (
 
 var (
 	ErrInvalidVirtualPath = errors.New("invalid virtual path")
-	ErrPathNotMapped     = errors.New("path is not covered by any preopen")
-	ErrReadOnlyPreopen   = errors.New("path is in a read-only preopen")
+	ErrPathNotMapped      = errors.New("path is not covered by any preopen")
+	ErrReadOnlyPreopen    = errors.New("path is in a read-only preopen")
 )
 
 type Preopen struct {

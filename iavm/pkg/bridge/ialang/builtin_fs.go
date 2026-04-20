@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	hostapi "iavm/pkg/host/api"
-	hostfs "iavm/pkg/host/fs"
+	hostapi "iacommon/pkg/host/api"
+	hostfs "iacommon/pkg/host/fs"
 )
 
 const PlatformFSModuleName = "@platform/fs"

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	hostapi "iavm/pkg/host/api"
-	hostfs "iavm/pkg/host/fs"
+	hostapi "iacommon/pkg/host/api"
+	hostfs "iacommon/pkg/host/fs"
 )
 
 func TestBuildPlatformFSModuleWithHost(t *testing.T) {

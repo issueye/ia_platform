@@ -8,6 +8,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-sql-driver/mysql v1.9.3
+	iacommon v0.0.0
 	iavm v0.0.0
 	github.com/lib/pq v1.12.3
 	github.com/microsoft/go-mssqldb v1.9.8
@@ -33,5 +34,3 @@ require (
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.28.0 // indirect
 )
-
-replace iavm => ../iavm

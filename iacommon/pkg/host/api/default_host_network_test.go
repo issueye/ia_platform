@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	hostnet "iavm/pkg/host/network"
+	hostnet "iacommon/pkg/host/network"
 )
 
 func TestDefaultHostCallNetworkHTTPFetch(t *testing.T) {

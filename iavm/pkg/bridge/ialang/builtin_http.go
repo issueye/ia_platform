@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	hostapi "iavm/pkg/host/api"
+	hostapi "iacommon/pkg/host/api"
 )
 
 const PlatformHTTPModuleName = "@platform/http"

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	hostfs "iavm/pkg/host/fs"
+	hostfs "iacommon/pkg/host/fs"
 )
 
 func TestDefaultHostAcquireAndCallFS(t *testing.T) {
@@ -47,7 +47,7 @@ func TestDefaultHostAcquireAndCallFS(t *testing.T) {
 	result, err := host.Call(ctx, CallRequest{
 		CapabilityID: capability.ID,
 		Operation:    "fs.read_file",
-		Args: map[string]any{"path": "/workspace/hello.txt"},
+		Args:         map[string]any{"path": "/workspace/hello.txt"},
 	})
 	if err != nil {
 		t.Fatalf("read file through host: %v", err)
@@ -68,7 +68,7 @@ func TestDefaultHostAcquireAndCallFS(t *testing.T) {
 	_, err = host.Call(ctx, CallRequest{
 		CapabilityID: capability.ID,
 		Operation:    "fs.read_file",
-		Args: map[string]any{"path": "/workspace/hello.txt"},
+		Args:         map[string]any{"path": "/workspace/hello.txt"},
 	})
 	if !errors.Is(err, ErrCapabilityNotFound) {
 		t.Fatalf("expected ErrCapabilityNotFound after release, got %v", err)

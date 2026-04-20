@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	hostapi "iavm/pkg/host/api"
-	hostnet "iavm/pkg/host/network"
+	hostapi "iacommon/pkg/host/api"
+	hostnet "iacommon/pkg/host/network"
 )
 
 func TestBuildPlatformHTTPModuleWithHost(t *testing.T) {
