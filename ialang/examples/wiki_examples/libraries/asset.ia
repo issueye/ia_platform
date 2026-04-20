@@ -1,0 +1,8 @@
+import * as asset from "asset";
+
+function main() {
+  let minified = asset.minify("body { color: red; }", "css");
+  let hashed = asset.hash(minified.content);
+  print(minified.content);
+  print(hashed.hash);
+}

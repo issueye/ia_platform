@@ -1,0 +1,45 @@
+import { greet } from "@/modules/utils/index";
+import { pkgName, pkgVersion } from "@/modules/pkg/index";
+import { fromFile } from "json";
+import { setLevel, setJSON, setOutputPath, info, warn } from "log";
+
+// 加载配置文件
+function loadConfig() {
+  try {
+    return fromFile("./config/app.json");
+  } catch (e) {
+    warn("failed to load config file, using defaults", { error: e });
+    return {
+      app: { name: "{{ .ProjectName }}" },
+      log: { level: "info", json: false, outputPath: "" }
+    };
+  }
+}
+
+// 应用日志配置
+function applyLogConfig(cfg) {
+  setLevel(cfg.log.level);
+  setJSON(cfg.log.json);
+  if (cfg.log.outputPath != "") {
+    setOutputPath(cfg.log.outputPath);
+  }
+}
+
+// 主函数
+function main() {
+  // 加载配置文件
+  let cfg = loadConfig();
+  // 应用日志配置
+  applyLogConfig(cfg);
+
+  // 打印日志
+  info("application started", {
+    project: pkgName,
+    version: pkgVersion,
+    logLevel: cfg.log.level,
+    logJSON: cfg.log.json,
+  });
+
+  print(greet(cfg.app.name));
+  print("project: " + pkgName + "@" + pkgVersion);
+}

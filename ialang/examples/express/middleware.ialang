@@ -1,0 +1,171 @@
+// Express 框架示例 - 中间件使用
+// 运行: ialang run examples/express/middleware.ialang
+
+import { express, logger, recovery, cors } from "express";
+
+const app = express();
+
+// 1. 全局中间件
+app.use(recovery());
+app.use(logger());
+
+// 2. 自定义日志中间件
+app.use((ctx) => {
+    print("[LOG] " + ctx.method() + " " + ctx.path());
+    ctx.next();
+    print("[LOG] Response status: " + ctx.status);
+});
+
+// 3. 请求计时中间件
+app.use((ctx) => {
+    const start = time.now();
+    ctx.next();
+    const duration = time.now() - start;
+    print("[TIME] " + ctx.path() + " - " + duration + "ms");
+});
+
+// 4. CORS 配置
+app.use(cors({
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+}));
+
+// 5. 认证中间件工厂函数
+function requireAuth() {
+    return (ctx) => {
+        const token = ctx.header("Authorization");
+        if (!token) {
+            ctx.status(401).json({
+                error: "Unauthorized",
+                message: "No token provided"
+            });
+            ctx.end();
+            return;
+        }
+        
+        // 验证 token（简化示例）
+        if (token !== "Bearer secret-token") {
+            ctx.status(403).json({
+                error: "Forbidden",
+                message: "Invalid token"
+            });
+            ctx.end();
+            return;
+        }
+        
+        // 将用户信息存储到上下文中
+        ctx.set("X-User", "admin");
+        ctx.next();
+    };
+}
+
+// 6. 日志记录中间件工厂函数
+function requestLogger(tag) {
+    return (ctx) => {
+        print("[" + tag + "] Request: " + ctx.method() + " " + ctx.path());
+        ctx.next();
+        print("[" + tag + "] Response: Completed");
+    };
+}
+
+// 公开路由
+app.get("/", (ctx) => {
+    ctx.json({
+        message: "Welcome to the API",
+        version: "1.0.0"
+    });
+});
+
+app.get("/health", (ctx) => {
+    ctx.json({
+        status: "ok",
+        timestamp: time.now()
+    });
+});
+
+// 需要认证的路由
+app.get("/profile", requireAuth(), (ctx) => {
+    ctx.json({
+        user: "admin",
+        email: "admin@example.com",
+        role: "administrator"
+    });
+});
+
+app.get("/settings", requireAuth(), (ctx) => {
+    ctx.json({
+        theme: "dark",
+        language: "zh-CN",
+        notifications: true
+    });
+});
+
+// 路由组中间件
+const api = app.group("/api/v1");
+
+// API 版本中间件
+api.use((ctx) => {
+    ctx.set("X-API-Version", "v1");
+    ctx.next();
+});
+
+api.get("/users", (ctx) => {
+    ctx.json({
+        users: [
+            { id: 1, name: "Alice" },
+            { id: 2, name: "Bob" }
+        ]
+    });
+});
+
+api.post("/users", requestLogger("CREATE_USER"), (ctx) => {
+    const body = ctx.body();
+    ctx.status(201).json({
+        message: "User created",
+        user: body
+    });
+});
+
+// 管理员路由组
+const admin = app.group("/admin");
+admin.use(requireAuth());
+
+admin.get("/", (ctx) => {
+    ctx.json({
+        dashboard: "Admin Panel",
+        stats: {
+            totalUsers: 100,
+            activeUsers: 45,
+            totalRequests: 10000
+        }
+    });
+});
+
+admin.get("/logs", (ctx) => {
+    ctx.json({
+        logs: [
+            { time: "2026-04-08 10:00:00", event: "User login" },
+            { time: "2026-04-08 10:05:00", event: "User created" }
+        ]
+    });
+});
+
+// 静态文件服务（如果有 public 目录）
+// app.static("/static", "./public");
+
+print("Starting server with middleware...");
+const server = app.listen("127.0.0.1:3000");
+
+print("Server running at " + server.addr);
+print("\nAvailable routes:");
+print("  GET  /              - Welcome page");
+print("  GET  /health        - Health check");
+print("  GET  /profile       - User profile (requires auth)");
+print("  GET  /settings      - User settings (requires auth)");
+print("  GET  /api/v1/users  - List users");
+print("  POST /api/v1/users  - Create user");
+print("  GET  /admin         - Admin panel (requires auth)");
+print("  GET  /admin/logs    - Admin logs (requires auth)");
+print("\nTest authenticated endpoint:");
+print('  curl -H "Authorization: Bearer secret-token" http://127.0.0.1:3000/profile');

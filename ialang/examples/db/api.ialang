@@ -1,0 +1,244 @@
+// RESTful API with Database Example
+// 运行: ialang run examples/db/api.ialang
+
+import { express, logger, recovery, cors } from "express";
+import { db } from "db";
+
+print("=== RESTful API with SQLite Database ===\n");
+
+// 初始化数据库
+const database = db.sqlite("./api_test.db");
+
+// 创建表
+db.exec(`
+    CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        price REAL NOT NULL,
+        stock INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+`);
+
+print("Database initialized\n");
+
+// 创建 Express 应用
+const app = express();
+
+// 中间件
+app.use(recovery());
+app.use(logger());
+app.use(cors());
+
+// ============ 产品 API ============
+
+// GET /products - 获取所有产品
+app.get("/products", (ctx) => {
+    const products = db.query("SELECT * FROM products ORDER BY id");
+    ctx.json({
+        success: true,
+        data: products,
+        total: products.length
+    });
+});
+
+// GET /products/:id - 获取单个产品
+app.get("/products/:id", (ctx) => {
+    const id = parseInt(ctx.param("id"));
+    const products = db.query("SELECT * FROM products WHERE id = ?", [id]);
+    
+    if (products.length === 0) {
+        ctx.status(404).json({
+            success: false,
+            error: "Not Found",
+            message: "Product with id " + id + " not found"
+        });
+        return;
+    }
+    
+    ctx.json({
+        success: true,
+        data: products[0]
+    });
+});
+
+// POST /products - 创建产品
+app.post("/products", (ctx) => {
+    const body = ctx.body();
+    
+    // 验证
+    if (!body.name || !body.price) {
+        ctx.status(400).json({
+            success: false,
+            error: "Bad Request",
+            message: "Name and price are required"
+        });
+        return;
+    }
+    
+    const result = db.exec(
+        "INSERT INTO products (name, description, price, stock) VALUES (?, ?, ?, ?)",
+        [
+            body.name,
+            body.description || "",
+            parseFloat(body.price),
+            parseInt(body.stock) || 0
+        ]
+    );
+    
+    // 获取新插入的产品
+    const products = db.query("SELECT * FROM products WHERE id = ?", [result.insertId]);
+    
+    ctx.status(201).json({
+        success: true,
+        data: products[0],
+        message: "Product created"
+    });
+});
+
+// PUT /products/:id - 更新产品
+app.put("/products/:id", (ctx) => {
+    const id = parseInt(ctx.param("id"));
+    const body = ctx.body();
+    
+    // 检查产品是否存在
+    const existing = db.query("SELECT * FROM products WHERE id = ?", [id]);
+    if (existing.length === 0) {
+        ctx.status(404).json({
+            success: false,
+            error: "Not Found",
+            message: "Product not found"
+        });
+        return;
+    }
+    
+    // 更新
+    db.exec(
+        "UPDATE products SET name = ?, description = ?, price = ?, stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [
+            body.name || existing[0].name,
+            body.description !== undefined ? body.description : existing[0].description,
+            body.price || existing[0].price,
+            body.stock !== undefined ? body.stock : existing[0].stock,
+            id
+        ]
+    );
+    
+    // 获取更新后的产品
+    const products = db.query("SELECT * FROM products WHERE id = ?", [id]);
+    
+    ctx.json({
+        success: true,
+        data: products[0],
+        message: "Product updated"
+    });
+});
+
+// DELETE /products/:id - 删除产品
+app.delete("/products/:id", (ctx) => {
+    const id = parseInt(ctx.param("id"));
+    
+    // 检查产品是否存在
+    const existing = db.query("SELECT * FROM products WHERE id = ?", [id]);
+    if (existing.length === 0) {
+        ctx.status(404).json({
+            success: false,
+            error: "Not Found",
+            message: "Product not found"
+        });
+        return;
+    }
+    
+    // 删除
+    db.exec("DELETE FROM products WHERE id = ?", [id]);
+    
+    ctx.json({
+        success: true,
+        data: existing[0],
+        message: "Product deleted"
+    });
+});
+
+// GET /products/search - 搜索产品
+app.get("/products/search", (ctx) => {
+    const query = ctx.query("q");
+    const minPrice = ctx.query("min_price");
+    const maxPrice = ctx.query("max_price");
+    
+    let sql = "SELECT * FROM products WHERE name LIKE ?";
+    let params = ["%" + query + "%"];
+    
+    if (minPrice) {
+        sql += " AND price >= ?";
+        params.push(parseFloat(minPrice));
+    }
+    
+    if (maxPrice) {
+        sql += " AND price <= ?";
+        params.push(parseFloat(maxPrice));
+    }
+    
+    sql += " ORDER BY id";
+    
+    const products = db.query(sql, params);
+    
+    ctx.json({
+        success: true,
+        data: products,
+        total: products.length
+    });
+});
+
+// GET /stats - 获取统计信息
+app.get("/stats", (ctx) => {
+    const countResult = db.query("SELECT COUNT(*) as total FROM products");
+    const avgPrice = db.query("SELECT AVG(price) as avg_price FROM products");
+    const totalStock = db.query("SELECT SUM(stock) as total_stock FROM products");
+    
+    ctx.json({
+        success: true,
+        data: {
+            totalProducts: countResult[0].total,
+            averagePrice: avgPrice[0].avg_price || 0,
+            totalStock: totalStock[0].total_stock || 0
+        }
+    });
+});
+
+// GET / - API 信息
+app.get("/", (ctx) => {
+    ctx.json({
+        success: true,
+        message: "Product Management API",
+        version: "1.0.0",
+        endpoints: [
+            "GET    /products          - List all products",
+            "GET    /products/:id      - Get product by ID",
+            "POST   /products          - Create product",
+            "PUT    /products/:id      - Update product",
+            "DELETE /products/:id      - Delete product",
+            "GET    /products/search   - Search products",
+            "GET    /stats             - Get statistics"
+        ]
+    });
+});
+
+// 启动服务器
+print("Starting API server on http://127.0.0.1:3000\n");
+print("Available endpoints:");
+print("  GET    /products          - List all products");
+print("  GET    /products/:id      - Get product by ID");
+print("  POST   /products          - Create product");
+print("  PUT    /products/:id      - Update product");
+print("  DELETE /products/:id      - Delete product");
+print("  GET    /products/search   - Search products");
+print("  GET    /stats             - Get statistics\n");
+print("Example requests:");
+print('  curl http://127.0.0.1:3000/products');
+print('  curl -X POST -H "Content-Type: application/json" -d \'{"name":"Laptop","price":999.99,"stock":50}\' http://127.0.0.1:3000/products');
+print('  curl http://127.0.0.1:3000/products/search?q=laptop\n');
+
+const server = app.listen("127.0.0.1:3000");
+print("Server running at " + server.addr);

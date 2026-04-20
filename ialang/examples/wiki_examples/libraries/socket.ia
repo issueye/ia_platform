@@ -1,0 +1,10 @@
+import * as socket from "socket";
+
+function main() {
+  let listener = socket.server.listen({
+    network: "tcp",
+    addr: "127.0.0.1:0"
+  });
+  print(listener.addr);
+  listener.close();
+}

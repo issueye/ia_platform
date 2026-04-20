@@ -1,0 +1,15 @@
+import { all, race, allSettled } from "Promise";
+
+async function task1() {
+  return "a";
+}
+
+async function task2() {
+  return "b";
+}
+
+async function main() {
+  print(await all([task1(), task2()]));
+  print(await race([task1(), task2()]));
+  print(await allSettled([task1(), task2()]));
+}

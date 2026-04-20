@@ -1,0 +1,472 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+
+	hostfs "iavm/pkg/host/fs"
+	hostnet "iavm/pkg/host/network"
+)
+
+var (
+	ErrCapabilityNotFound    = errors.New("capability not found")
+	ErrProviderUnavailable   = errors.New("provider unavailable")
+	ErrInvalidCallArgs       = errors.New("invalid call args")
+	ErrPollNotSupported      = errors.New("poll is not supported")
+	ErrCapabilityUnsupported = errors.New("capability is not supported")
+)
+
+type DefaultHost struct {
+	FS      hostfs.Provider
+	Network hostnet.Provider
+
+	mu           sync.Mutex
+	capabilities map[string]CapabilityInstance
+	nextCapID    uint64
+}
+
+func (h *DefaultHost) AcquireCapability(ctx context.Context, req AcquireRequest) (CapabilityInstance, error) {
+	if err := ctx.Err(); err != nil {
+		return CapabilityInstance{}, err
+	}
+
+	instance, err := h.newCapabilityInstance(req)
+	if err != nil {
+		return CapabilityInstance{}, err
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.capabilities == nil {
+		h.capabilities = map[string]CapabilityInstance{}
+	}
+	if instance.ID == "" {
+		h.nextCapID++
+		instance.ID = fmt.Sprintf("cap-%d", h.nextCapID)
+	}
+	h.capabilities[instance.ID] = instance
+	return instance, nil
+}
+
+func (h *DefaultHost) ReleaseCapability(ctx context.Context, capID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.capabilities == nil {
+		return fmt.Errorf("%w: %s", ErrCapabilityNotFound, capID)
+	}
+	if _, ok := h.capabilities[capID]; !ok {
+		return fmt.Errorf("%w: %s", ErrCapabilityNotFound, capID)
+	}
+	delete(h.capabilities, capID)
+	return nil
+}
+
+func (h *DefaultHost) Call(ctx context.Context, req CallRequest) (CallResult, error) {
+	if err := ctx.Err(); err != nil {
+		return CallResult{}, err
+	}
+
+	capability, err := h.lookupCapability(req.CapabilityID)
+	if err != nil {
+		return CallResult{}, err
+	}
+
+	switch capability.Kind {
+	case CapabilityFS:
+		return h.callFS(ctx, req)
+	case CapabilityNetwork:
+		return h.callNetwork(ctx, req)
+	default:
+		return CallResult{}, fmt.Errorf("%w: %s", ErrCapabilityUnsupported, capability.Kind)
+	}
+}
+
+func (h *DefaultHost) Poll(ctx context.Context, handleID uint64) (PollResult, error) {
+	if err := ctx.Err(); err != nil {
+		return PollResult{}, err
+	}
+	_ = handleID
+	return PollResult{}, ErrPollNotSupported
+}
+
+func (h *DefaultHost) newCapabilityInstance(req AcquireRequest) (CapabilityInstance, error) {
+	switch req.Kind {
+	case CapabilityFS:
+		if h == nil || h.FS == nil {
+			return CapabilityInstance{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, CapabilityFS)
+		}
+		return CapabilityInstance{
+			Kind:   CapabilityFS,
+			Rights: readStringSlice(req.Config, "rights"),
+			Meta:   cloneMap(req.Config),
+		}, nil
+	case CapabilityNetwork:
+		if h == nil || h.Network == nil {
+			return CapabilityInstance{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, CapabilityNetwork)
+		}
+		return CapabilityInstance{
+			Kind:   CapabilityNetwork,
+			Rights: readStringSlice(req.Config, "rights"),
+			Meta:   cloneMap(req.Config),
+		}, nil
+	default:
+		return CapabilityInstance{}, fmt.Errorf("%w: %s", ErrCapabilityUnsupported, req.Kind)
+	}
+}
+
+func (h *DefaultHost) lookupCapability(capID string) (CapabilityInstance, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.capabilities == nil {
+		return CapabilityInstance{}, fmt.Errorf("%w: %s", ErrCapabilityNotFound, capID)
+	}
+	capability, ok := h.capabilities[capID]
+	if !ok {
+		return CapabilityInstance{}, fmt.Errorf("%w: %s", ErrCapabilityNotFound, capID)
+	}
+	return capability, nil
+}
+
+func (h *DefaultHost) callFS(ctx context.Context, req CallRequest) (CallResult, error) {
+	if h == nil || h.FS == nil {
+		return CallResult{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, CapabilityFS)
+	}
+
+	switch req.Operation {
+	case "fs.read_file":
+		path, err := readString(req.Args, "path")
+		if err != nil {
+			return CallResult{}, err
+		}
+		data, err := h.FS.ReadFile(ctx, path)
+		if err != nil {
+			return CallResult{}, err
+		}
+		return CallResult{Value: map[string]any{"data": data}}, nil
+	case "fs.write_file":
+		path, err := readString(req.Args, "path")
+		if err != nil {
+			return CallResult{}, err
+		}
+		data, err := readBytes(req.Args, "data")
+		if err != nil {
+			return CallResult{}, err
+		}
+		err = h.FS.WriteFile(ctx, path, data, hostfs.WriteOptions{
+			Create: readBool(req.Args, "create"),
+			Trunc:  readBool(req.Args, "trunc"),
+		})
+		if err != nil {
+			return CallResult{}, err
+		}
+		return CallResult{Value: map[string]any{}}, nil
+	case "fs.append_file":
+		path, err := readString(req.Args, "path")
+		if err != nil {
+			return CallResult{}, err
+		}
+		data, err := readBytes(req.Args, "data")
+		if err != nil {
+			return CallResult{}, err
+		}
+		if err := h.FS.AppendFile(ctx, path, data); err != nil {
+			return CallResult{}, err
+		}
+		return CallResult{Value: map[string]any{}}, nil
+	case "fs.read_dir":
+		path, err := readString(req.Args, "path")
+		if err != nil {
+			return CallResult{}, err
+		}
+		entries, err := h.FS.ReadDir(ctx, path)
+		if err != nil {
+			return CallResult{}, err
+		}
+		return CallResult{Value: map[string]any{"entries": entries}}, nil
+	case "fs.stat":
+		path, err := readString(req.Args, "path")
+		if err != nil {
+			return CallResult{}, err
+		}
+		info, err := h.FS.Stat(ctx, path)
+		if err != nil {
+			return CallResult{}, err
+		}
+		return CallResult{Value: map[string]any{"info": info}}, nil
+	case "fs.mkdir":
+		path, err := readString(req.Args, "path")
+		if err != nil {
+			return CallResult{}, err
+		}
+		if err := h.FS.Mkdir(ctx, path, hostfs.MkdirOptions{Recursive: readBool(req.Args, "recursive")}); err != nil {
+			return CallResult{}, err
+		}
+		return CallResult{Value: map[string]any{}}, nil
+	case "fs.remove":
+		path, err := readString(req.Args, "path")
+		if err != nil {
+			return CallResult{}, err
+		}
+		if err := h.FS.Remove(ctx, path, hostfs.RemoveOptions{Recursive: readBool(req.Args, "recursive")}); err != nil {
+			return CallResult{}, err
+		}
+		return CallResult{Value: map[string]any{}}, nil
+	case "fs.rename":
+		oldPath, err := readStringAny(req.Args, "old_path", "oldPath")
+		if err != nil {
+			return CallResult{}, err
+		}
+		newPath, err := readStringAny(req.Args, "new_path", "newPath")
+		if err != nil {
+			return CallResult{}, err
+		}
+		if err := h.FS.Rename(ctx, oldPath, newPath); err != nil {
+			return CallResult{}, err
+		}
+		return CallResult{Value: map[string]any{}}, nil
+	default:
+		return CallResult{}, fmt.Errorf("unknown fs operation: %w: %s", ErrCapabilityUnsupported, req.Operation)
+	}
+}
+
+func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallResult, error) {
+	if h == nil || h.Network == nil {
+		return CallResult{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, CapabilityNetwork)
+	}
+
+	switch req.Operation {
+	case "network.http_fetch":
+		requestURL, err := readString(req.Args, "url")
+		if err != nil {
+			return CallResult{}, err
+		}
+		method, err := readOptionalStringAny(req.Args, "method")
+		if err != nil {
+			return CallResult{}, err
+		}
+		headers, err := readStringMap(req.Args, "headers")
+		if err != nil {
+			return CallResult{}, err
+		}
+		body, err := readOptionalBytes(req.Args, "body")
+		if err != nil {
+			return CallResult{}, err
+		}
+		timeoutMS, err := readOptionalInt64Any(req.Args, "timeout_ms", "timeoutMS")
+		if err != nil {
+			return CallResult{}, err
+		}
+
+		response, err := h.Network.HTTPFetch(ctx, hostnet.HTTPRequest{
+			Method:    method,
+			URL:       requestURL,
+			Headers:   headers,
+			Body:      body,
+			TimeoutMS: timeoutMS,
+		})
+		if err != nil {
+			return CallResult{}, err
+		}
+
+		return CallResult{Value: map[string]any{
+			"status":  response.Status,
+			"headers": response.Headers,
+			"body":    response.Body,
+		}}, nil
+	default:
+		return CallResult{}, fmt.Errorf("unknown network operation: %w: %s", ErrCapabilityUnsupported, req.Operation)
+	}
+}
+
+func readString(args map[string]any, key string) (string, error) {
+	return readStringAny(args, key)
+}
+
+func readStringAny(args map[string]any, keys ...string) (string, error) {
+	for _, key := range keys {
+		value, ok := args[key]
+		if !ok {
+			continue
+		}
+		text, ok := value.(string)
+		if !ok {
+			return "", fmt.Errorf("%w: %s must be a string", ErrInvalidCallArgs, key)
+		}
+		return text, nil
+	}
+	return "", fmt.Errorf("%w: missing %v", ErrInvalidCallArgs, keys)
+}
+
+func readOptionalStringAny(args map[string]any, keys ...string) (string, error) {
+	for _, key := range keys {
+		value, ok := args[key]
+		if !ok || value == nil {
+			continue
+		}
+		text, ok := value.(string)
+		if !ok {
+			return "", fmt.Errorf("%w: %s must be a string", ErrInvalidCallArgs, key)
+		}
+		return text, nil
+	}
+	return "", nil
+}
+
+func readBytes(args map[string]any, key string) ([]byte, error) {
+	value, ok := args[key]
+	if !ok {
+		return nil, fmt.Errorf("%w: missing %s", ErrInvalidCallArgs, key)
+	}
+	switch typed := value.(type) {
+	case []byte:
+		return typed, nil
+	case string:
+		return []byte(typed), nil
+	default:
+		return nil, fmt.Errorf("%w: %s must be []byte or string", ErrInvalidCallArgs, key)
+	}
+}
+
+func readOptionalBytes(args map[string]any, key string) ([]byte, error) {
+	value, ok := args[key]
+	if !ok || value == nil {
+		return nil, nil
+	}
+	switch typed := value.(type) {
+	case []byte:
+		return typed, nil
+	case string:
+		return []byte(typed), nil
+	default:
+		return nil, fmt.Errorf("%w: %s must be []byte or string", ErrInvalidCallArgs, key)
+	}
+}
+
+func readBool(args map[string]any, key string) bool {
+	value, ok := args[key]
+	if !ok {
+		return false
+	}
+	flag, ok := value.(bool)
+	if !ok {
+		return false
+	}
+	return flag
+}
+
+func readOptionalInt64Any(args map[string]any, keys ...string) (int64, error) {
+	for _, key := range keys {
+		value, ok := args[key]
+		if !ok || value == nil {
+			continue
+		}
+		return readInt64Value(key, value)
+	}
+	return 0, nil
+}
+
+func readInt64Value(key string, value any) (int64, error) {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), nil
+	case int8:
+		return int64(typed), nil
+	case int16:
+		return int64(typed), nil
+	case int32:
+		return int64(typed), nil
+	case int64:
+		return typed, nil
+	case uint:
+		return int64(typed), nil
+	case uint8:
+		return int64(typed), nil
+	case uint16:
+		return int64(typed), nil
+	case uint32:
+		return int64(typed), nil
+	case uint64:
+		return int64(typed), nil
+	case float32:
+		return int64(typed), nil
+	case float64:
+		return int64(typed), nil
+	default:
+		return 0, fmt.Errorf("%w: %s must be a number", ErrInvalidCallArgs, key)
+	}
+}
+
+func readStringMap(args map[string]any, key string) (map[string]string, error) {
+	value, ok := args[key]
+	if !ok || value == nil {
+		return nil, nil
+	}
+	switch typed := value.(type) {
+	case map[string]string:
+		result := make(map[string]string, len(typed))
+		for k, v := range typed {
+			result[k] = v
+		}
+		return result, nil
+	case map[string]any:
+		result := make(map[string]string, len(typed))
+		for k, v := range typed {
+			text, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("%w: %s[%s] must be a string", ErrInvalidCallArgs, key, k)
+			}
+			result[k] = text
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("%w: %s must be a string map", ErrInvalidCallArgs, key)
+	}
+}
+
+func readStringSlice(values map[string]any, key string) []string {
+	if values == nil {
+		return nil
+	}
+	value, ok := values[key]
+	if !ok {
+		return nil
+	}
+	return toStringSlice(value)
+}
+
+func toStringSlice(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		result := make([]string, len(typed))
+		copy(result, typed)
+		return result
+	case []any:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text, ok := item.(string)
+			if ok {
+				result = append(result, text)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func cloneMap(values map[string]any) map[string]any {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]any, len(values))
+	for key, value := range values {
+		result[key] = value
+	}
+	return result
+}

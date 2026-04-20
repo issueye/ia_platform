@@ -1,0 +1,2 @@
+export let appName = "package-demo";
+export let appVersion = "1.0.0";

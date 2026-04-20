@@ -1,0 +1,56 @@
+{
+  "name": "ialang-vscode",
+  "displayName": "ialang",
+  "description": "VS Code support for ialang: syntax highlighting and language server features.",
+  "version": "0.0.1",
+  "publisher": "ialang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.89.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:ialang"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "ialang",
+        "aliases": [
+          "ialang",
+          "IA"
+        ],
+        "extensions": [
+          ".ia"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ialang",
+        "scopeName": "source.ialang",
+        "path": "./syntaxes/ialang.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "gen:native": "node ./scripts/generate-native-symbols.mjs",
+    "compile": "npm run gen:native && tsc -p .",
+    "watch": "tsc -w -p .",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.15",
+    "@types/vscode": "^1.89.0",
+    "typescript": "^5.6.2"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11"
+  }
+}

@@ -1,0 +1,244 @@
+{
+  "addr": ":8089",
+  "content_dir": "content",
+  "site_title": "ialang 文档",
+  "home_slug": "index",
+  "navigation": [
+    {
+      "title": "首页",
+      "slug": "index"
+    },
+    {
+      "title": "快速开始",
+      "slug": "getting-started"
+    },
+    {
+      "title": "示例总览",
+      "slug": "examples"
+    },
+    {
+      "title": "语言概览",
+      "slug": "language",
+      "children": [
+        {
+          "title": "命令与项目结构",
+          "slug": "language/usage"
+        }
+      ]
+    },
+    {
+      "title": "原生库概览",
+      "slug": "native",
+      "children": [
+        {
+		  "title": "网络类库目录",
+		  "slug": "native/libraries/network",
+		  "children": [
+			{
+			  "title": "http",
+			  "slug": "native/libraries/http"
+			},
+			{
+			  "title": "express",
+			  "slug": "native/libraries/express"
+			},
+			{
+			  "title": "websocket",
+			  "slug": "native/libraries/websocket"
+			},
+			{
+			  "title": "sse",
+			  "slug": "native/libraries/sse"
+			},
+			{
+			  "title": "socket",
+			  "slug": "native/libraries/socket"
+			},
+			{
+			  "title": "ipc",
+			  "slug": "native/libraries/ipc"
+			},
+			{
+			  "title": "iax",
+			  "slug": "native/libraries/iax"
+			},
+			{
+			  "title": "net",
+			  "slug": "native/libraries/net"
+			}
+		  ]
+		},
+		{
+		  "title": "系统类库目录",
+		  "slug": "native/libraries/system",
+		  "children": [
+			{
+			  "title": "fs",
+			  "slug": "native/libraries/fs"
+			},
+			{
+			  "title": "path",
+			  "slug": "native/libraries/path"
+			},
+			{
+			  "title": "os",
+			  "slug": "native/libraries/os"
+			},
+			{
+			  "title": "process",
+			  "slug": "native/libraries/process"
+			},
+			{
+			  "title": "signal",
+			  "slug": "native/libraries/signal"
+			},
+			{
+			  "title": "exec",
+			  "slug": "native/libraries/exec"
+			},
+			{
+			  "title": "time",
+			  "slug": "native/libraries/time"
+			},
+			{
+			  "title": "timer",
+			  "slug": "native/libraries/timer"
+			},
+			{
+			  "title": "pool",
+			  "slug": "native/libraries/pool"
+			},
+			{
+			  "title": "asset",
+			  "slug": "native/libraries/asset"
+			}
+		  ]
+		},
+		{
+		  "title": "数据类库目录",
+		  "slug": "native/libraries/data",
+		  "children": [
+			{
+			  "title": "json",
+			  "slug": "native/libraries/json"
+			},
+			{
+			  "title": "yaml",
+			  "slug": "native/libraries/yaml"
+			},
+			{
+			  "title": "toml",
+			  "slug": "native/libraries/toml"
+			},
+			{
+			  "title": "xml",
+			  "slug": "native/libraries/xml"
+			},
+			{
+			  "title": "csv",
+			  "slug": "native/libraries/csv"
+			},
+			{
+			  "title": "encoding",
+			  "slug": "native/libraries/encoding"
+			},
+			{
+			  "title": "hex",
+			  "slug": "native/libraries/hex"
+			},
+			{
+			  "title": "bytes",
+			  "slug": "native/libraries/bytes"
+			},
+			{
+			  "title": "mime",
+			  "slug": "native/libraries/mime"
+			},
+			{
+			  "title": "compress",
+			  "slug": "native/libraries/compress"
+			},
+			{
+			  "title": "crypto",
+			  "slug": "native/libraries/crypto"
+			},
+			{
+			  "title": "hash",
+			  "slug": "native/libraries/hash"
+			},
+			{
+			  "title": "hmac",
+			  "slug": "native/libraries/hmac"
+			},
+			{
+			  "title": "uuid",
+			  "slug": "native/libraries/uuid"
+			},
+			{
+			  "title": "url",
+			  "slug": "native/libraries/url"
+			},
+			{
+			  "title": "db",
+			  "slug": "native/libraries/db"
+			},
+			{
+			  "title": "orm",
+			  "slug": "native/libraries/orm"
+			}
+		  ]
+		},
+		{
+		  "title": "工具类库目录",
+		  "slug": "native/libraries/tools",
+		  "children": [
+			{
+			  "title": "math",
+			  "slug": "native/libraries/math"
+			},
+			{
+			  "title": "string",
+			  "slug": "native/libraries/string"
+			},
+			{
+			  "title": "array",
+			  "slug": "native/libraries/array"
+			},
+			{
+			  "title": "sort",
+			  "slug": "native/libraries/sort"
+			},
+			{
+			  "title": "set",
+			  "slug": "native/libraries/set"
+			},
+			{
+			  "title": "strconv",
+			  "slug": "native/libraries/strconv"
+			},
+			{
+			  "title": "rand",
+			  "slug": "native/libraries/rand"
+			},
+			{
+			  "title": "regexp",
+			  "slug": "native/libraries/regexp"
+			},
+			{
+			  "title": "log",
+			  "slug": "native/libraries/log"
+			},
+			{
+			  "title": "Promise",
+			  "slug": "native/libraries/promise"
+			},
+			{
+			  "title": "@agent/sdk",
+			  "slug": "native/libraries/agent-sdk"
+			}
+		  ]
+		}
+      ]
+    }
+  ]
+}

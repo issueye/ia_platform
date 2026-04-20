@@ -1,0 +1,17 @@
+let i = 0;
+let sum = 0;
+while (i < 5) {
+  sum = sum + i;
+  i = i + 1;
+}
+if (sum == 10) {
+  print("sum ok: " + sum);
+} else {
+  print("sum bad: " + sum);
+}
+if (sum != 9) {
+  print("neq works");
+}
+if (true) {
+  print("bool works");
+}

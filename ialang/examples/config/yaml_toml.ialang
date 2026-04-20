@@ -1,0 +1,164 @@
+// YAML 和 TOML 使用示例
+// 运行: ialang run examples/config/yaml_toml.ialang
+
+import { yaml } from "yaml";
+import { toml } from "toml";
+
+print("=== YAML and TOML Example ===\n");
+
+// ============ YAML 示例 ============
+
+print("--- YAML Section ---\n");
+
+// YAML 字符串
+const yamlStr = `
+server:
+  host: localhost
+  port: 8080
+  debug: true
+
+database:
+  driver: sqlite3
+  name: myapp.db
+  pool:
+    max: 10
+    min: 2
+
+users:
+  - name: Alice
+    email: alice@example.com
+    age: 25
+  - name: Bob
+    email: bob@example.com
+    age: 30
+`;
+
+print("YAML Input:");
+print(yamlStr);
+
+// 解析 YAML
+print("\nParsing YAML...");
+const yamlData = yaml.parse(yamlStr);
+
+print("\nParsed data:");
+print("Server host: " + yamlData.server.host);
+print("Server port: " + yamlData.server.port);
+print("Server debug: " + yamlData.server.debug);
+print("Database driver: " + yamlData.database.driver);
+print("Database name: " + yamlData.database.name);
+print("Database pool max: " + yamlData.database.pool.max);
+
+print("\nUsers:");
+for (let i = 0; i < yamlData.users.length; i++) {
+    const user = yamlData.users[i];
+    print("  " + (i + 1) + ". " + user.name + " (" + user.email + ") - Age: " + user.age);
+}
+
+// 创建对象并转换为 YAML
+print("\n--- Create YAML from Object ---\n");
+
+const config = {
+    app: {
+        name: "My Application",
+        version: "1.0.0",
+        description: "A sample application"
+    },
+    logging: {
+        level: "info",
+        file: "app.log"
+    },
+    features: ["auth", "api", "webhook"]
+};
+
+print("Converting object to YAML:");
+const yamlOutput = yaml.stringify(config);
+print(yamlOutput);
+
+// ============ TOML 示例 ============
+
+print("\n--- TOML Section ---\n");
+
+// TOML 字符串
+const tomlStr = `
+[server]
+host = "localhost"
+port = 3000
+debug = false
+
+[database]
+driver = "postgres"
+name = "myapp"
+host = "localhost"
+port = 5432
+
+[[users]]
+name = "Charlie"
+email = "charlie@example.com"
+role = "admin"
+
+[[users]]
+name = "Diana"
+email = "diana@example.com"
+role = "user"
+`;
+
+print("TOML Input:");
+print(tomlStr);
+
+// 解析 TOML
+print("\nParsing TOML...");
+const tomlData = toml.parse(tomlStr);
+
+print("\nParsed data:");
+print("Server host: " + tomlData.server.host);
+print("Server port: " + tomlData.server.port);
+print("Server debug: " + tomlData.server.debug);
+print("Database driver: " + tomlData.database.driver);
+print("Database name: " + tomlData.database.name);
+print("Database host: " + tomlData.database.host);
+
+print("\nUsers:");
+for (let i = 0; i < tomlData.users.length; i++) {
+    const user = tomlData.users[i];
+    print("  " + (i + 1) + ". " + user.name + " (" + user.email + ") - Role: " + user.role);
+}
+
+// 创建对象并转换为 TOML
+print("\n--- Create TOML from Object ---\n");
+
+const appConfig = {
+    title: "My App",
+    version: "2.0.0",
+    
+    owner: {
+        name: "John Doe",
+        email: "john@example.com"
+    },
+    
+    dependencies: {
+        express: "^4.0.0",
+        database: "^1.0.0"
+    }
+};
+
+print("Converting object to TOML:");
+const tomlOutput = toml.stringify(appConfig);
+print(tomlOutput);
+
+// ============ 对比 ============
+
+print("\n--- Comparison ---\n");
+
+print("YAML Features:");
+print("  ✓ Human-readable");
+print("  ✓ Supports complex structures");
+print("  ✓ Popular in DevOps (Kubernetes, Docker)");
+print("  ✓ Indentation-based\n");
+
+print("TOML Features:");
+print("  ✓ Explicit and unambiguous");
+print("  ✓ Easy to parse");
+print("  ✓ Popular in configuration (Cargo, Poetry)");
+print("  ✓ Key-value based\n");
+
+print("=== Example Complete ===");

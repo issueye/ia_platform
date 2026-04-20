@@ -1,0 +1,13 @@
+import * as pool from "pool";
+
+function main() {
+  let p = pool.createPool({
+    minWorkers: 1,
+    maxWorkers: 2,
+    queueSize: 8
+  });
+  let stats = p.getStats();
+  print(stats.totalWorkers);
+  print(stats.queuedTasks);
+  p.shutdown(2000);
+}

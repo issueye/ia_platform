@@ -1,0 +1,114 @@
+package main
+
+import (
+	"ialang/pkg/express"
+	"log"
+	"regexp"
+)
+
+// 验证和错误处理示例
+func main() {
+	app := express.New()
+	
+	// 使用错误处理中间件
+	app.Use(express.ErrorMiddleware())
+	
+	// 验证规则定义
+	userRules := map[string][]express.Rule{
+		"name": {
+			{Required: true, MinLength: ptrInt(2), MaxLength: ptrInt(50), Message: "Name must be between 2 and 50 characters"},
+		},
+		"email": {
+			{Required: true, Pattern: regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`), Message: "Invalid email format"},
+		},
+		"age": {
+			{Type: "number", Min: ptrFloat(0), Max: ptrFloat(150), Message: "Age must be between 0 and 150"},
+		},
+	}
+	
+	// 创建用户 - 带验证
+	app.POST("/users", func(ctx *express.Context) {
+		body := ctx.GetBody()
+		
+		// 验证数据
+		errors := express.Validate(body, userRules)
+		if len(errors) > 0 {
+			ctx.Status(400).JSON(map[string]interface{}{
+				"error": "Validation failed",
+				"details": errors,
+			})
+			return
+		}
+		
+		ctx.Status(201).JSON(map[string]interface{}{
+			"message": "User created",
+			"user":    body,
+		})
+	})
+	
+	// 使用错误工厂函数
+	app.GET("/users/:id", func(ctx *express.Context) {
+		id, err := ctx.IntParam("id")
+		if err != nil {
+			express.HandleError(ctx, express.BadRequest("Invalid user ID"))
+			return
+		}
+		
+		if id <= 0 {
+			express.HandleError(ctx, express.BadRequest("User ID must be positive"))
+			return
+		}
+		
+		// 模拟用户不存在
+		if id > 1000 {
+			express.HandleError(ctx, express.NotFound("User not found"))
+			return
+		}
+		
+		ctx.JSON(map[string]interface{}{
+			"id":   id,
+			"name": "User " + string(rune(id)),
+		})
+	})
+	
+	// 自定义错误处理
+	customErrorHandler := func(err error, ctx *express.Context) {
+		if httpErr, ok := err.(*express.HTTPError); ok {
+			ctx.Status(httpErr.StatusCode)
+			ctx.JSON(map[string]interface{}{
+				"success": false,
+				"error": map[string]interface{}{
+					"code":    httpErr.Code,
+					"message": httpErr.Message,
+				},
+			})
+			return
+		}
+		
+		ctx.Status(500)
+		ctx.JSON(map[string]interface{}{
+			"success": false,
+			"error": map[string]interface{}{
+				"code":    "UNKNOWN_ERROR",
+				"message": "Something went wrong",
+			},
+		})
+	}
+	
+	app.Use(express.ErrorMiddleware(customErrorHandler))
+	
+	app.POST("/custom-error", func(ctx *express.Context) {
+		// 模拟业务逻辑抛出错误
+		panic("Something went wrong!")
+	})
+	
+	log.Fatal(app.Listen(":3000"))
+}
+
+func ptrInt(i int) *int {
+	return &i
+}
+
+func ptrFloat(f float64) *float64 {
+	return &f
+}

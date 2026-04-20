@@ -1,0 +1,20 @@
+import { split, join, trim, replace, toLowerCase, toUpperCase, startsWith, endsWith, contains, indexOf, length, repeat, parseInt, parseFloat } from "string";
+
+print("=== string module tests ===");
+let s = "  Hello World  ";
+print("trim('" + s + "') => '" + trim(s) + "'");
+let s2 = "hello-world";
+print("split('" + s2 + "', '-') => " + split(s2, "-"));
+print("join(['a', 'b', 'c'], '-') => " + join(["a", "b", "c"], "-"));
+print("toLowerCase('HELLO') => " + toLowerCase("HELLO"));
+print("toUpperCase('hello') => " + toUpperCase("hello"));
+print("startsWith('hello', 'hel') => " + startsWith("hello", "hel"));
+print("endsWith('hello', 'lo') => " + endsWith("hello", "lo"));
+print("contains('hello', 'ell') => " + contains("hello", "ell"));
+print("indexOf('hello', 'll') => " + indexOf("hello", "ll"));
+print("length('hello') => " + length("hello"));
+print("repeat('ab', 3) => " + repeat("ab", 3));
+print("replace('hello world', 'world', 'ia') => " + replace("hello world", "world", "ia"));
+print("parseInt('42') => " + parseInt("42"));
+print("parseFloat('3.14') => " + parseFloat("3.14"));
+print("=== string tests done ===");

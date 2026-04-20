@@ -1,0 +1,129 @@
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import * as process from "process";
+import * as signal from "signal";
+import * as exec from "exec";
+import * as time from "time";
+import * as timer from "timer";
+import * as pool from "pool";
+import * as asset from "asset";
+
+function demoFSAndPath() {
+  fs.mkdir("./.tmp/wiki_examples", true);
+  fs.writeFile("./.tmp/wiki_examples/demo.txt", "hello ialang");
+
+  let text = fs.readFile("./.tmp/wiki_examples/demo.txt");
+  let fullPath = path.join(".tmp", "wiki_examples", "demo.txt");
+
+  print(fs.exists("./.tmp/wiki_examples/demo.txt"));
+  print(text);
+  print(path.base(fullPath));
+  print(path.ext(fullPath));
+  print(path.dir(fullPath));
+}
+
+function demoOSAndProcess() {
+  print(os.platform());
+  print(os.arch());
+  print(os.userDir());
+  print(os.tempDir());
+  print(process.pid());
+  print(process.ppid());
+  print(process.cwd());
+  print(process.args());
+}
+
+function demoSignal() {
+  let sub = signal.notify([signal.SIGINT]);
+  print("waiting for SIGINT...");
+  let name = sub.recv();
+  print(name);
+  sub.stop();
+}
+
+function demoExec() {
+  let result = exec.run("go", {
+    args: ["version"],
+    timeoutMs: 5000
+  });
+
+  print(result.ok);
+  print(result.stdout);
+}
+
+function demoTime() {
+  print(time.nowUnix());
+  print(time.nowUnixMilli());
+  print(time.nowISO());
+}
+
+function demoTimer() {
+  function onDone() {
+    print("timer fired");
+  }
+
+  let id = timer.setTimeout(onDone, 200);
+  timer.clearTimeout(id);
+}
+
+async function demoTimerAsync() {
+  await timer.sleepAsync(50);
+  print("timer async done");
+}
+
+function job() {
+  print("pool job running");
+  return "done";
+}
+
+function demoPool() {
+  let p = pool.createPool({
+    minWorkers: 1,
+    maxWorkers: 2,
+    queueSize: 8
+  });
+
+  let stats = p.getStats();
+
+  print(stats.totalWorkers);
+  print(stats.queuedTasks);
+  p.shutdown(2000);
+}
+
+function demoAssetHelpers() {
+  let minified = asset.minify("body { color: red; }", "css");
+  let hashed = asset.hash(minified.content);
+
+  print(minified.content);
+  print(hashed.hash);
+}
+
+function demoAssetBundle() {
+  fs.mkdir("./.tmp/wiki_examples/assets", true);
+  fs.writeFile("./.tmp/wiki_examples/assets/a.css", "body { color: red; }");
+  fs.writeFile("./.tmp/wiki_examples/assets/b.css", ".box { padding: 8px; }");
+
+  let result = asset.bundle("./.tmp/wiki_examples/dist", {
+    files: [
+      "./.tmp/wiki_examples/assets/a.css",
+      "./.tmp/wiki_examples/assets/b.css"
+    ],
+    minify: true,
+    hash: true,
+    concat: true
+  });
+
+  print(result.output);
+  print(result.count);
+}
+
+function main() {
+  print("wiki example => system-and-runtime");
+  demoFSAndPath();
+  demoOSAndProcess();
+  demoTime();
+  demoPool();
+  demoAssetHelpers();
+  print("other demos available: demoSignal/demoExec/demoTimer/demoTimerAsync/demoAssetBundle");
+}

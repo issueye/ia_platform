@@ -1,0 +1,7 @@
+import * as mime from "mime";
+
+function main() {
+  print(mime.typeByExt(".json"));
+  print(mime.extByType("text/html"));
+  print(mime.detectByPath("./examples/hello.ia"));
+}

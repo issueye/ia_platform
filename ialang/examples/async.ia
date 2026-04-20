@@ -1,0 +1,6 @@
+import { llm } from "@agent/sdk";
+
+let msg = await llm.chatAsync("build an agent workflow");
+print(msg);
+let mixed = "result: " + await llm.chatAsync("step-1");
+print(mixed);

@@ -1,0 +1,369 @@
+// 静态资源打包示例
+// 运行: ialang run examples/asset/bundle.ialang
+
+import { asset } from "asset";
+import { fs } from "fs";
+
+print("=== Static Asset Bundler Example ===\n");
+
+// ============ 创建示例文件 ============
+
+print("Creating sample files...\n");
+
+// 创建 CSS 文件
+const cssContent = `
+/* Main Styles */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background-color: #ffffff;
+    color: #333333;
+}
+
+/* Header Styles */
+.header {
+    background-color: #007bff;
+    color: white;
+    padding: 20px;
+    text-align: center;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 2em;
+}
+
+/* Navigation */
+.nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background-color: #f8f9fa;
+}
+
+.nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+}
+
+.nav li {
+    margin-left: 20px;
+}
+
+.nav a {
+    text-decoration: none;
+    color: #007bff;
+}
+
+/* Footer */
+.footer {
+    background-color: #343a40;
+    color: white;
+    text-align: center;
+    padding: 20px;
+    margin-top: 40px;
+}
+`;
+
+fs.writeFile("./assets/css/main.css", cssContent);
+print("Created: assets/css/main.css");
+
+// 创建另一个 CSS 文件
+const cssContent2 = `
+/* Component Styles */
+.card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.button {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.button:hover {
+    background-color: #0056b3;
+}
+
+.input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+}
+`;
+
+fs.writeFile("./assets/css/components.css", cssContent2);
+print("Created: assets/css/components.css");
+
+// 创建 JS 文件
+const jsContent = `
+// Main Application
+function initApp() {
+    console.log("Application initialized");
+    
+    // Setup event listeners
+    document.querySelectorAll(".button").forEach(button => {
+        button.addEventListener("click", handleClick);
+    });
+}
+
+function handleClick(event) {
+    console.log("Button clicked:", event.target.textContent);
+}
+
+// Utility functions
+function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return \`\${year}-\${month}-\${day}\`;
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Initialize
+document.addEventListener("DOMContentLoaded", initApp);
+`;
+
+fs.writeFile("./assets/js/app.js", jsContent);
+print("Created: assets/js/app.js");
+
+// 创建另一个 JS 文件
+const jsContent2 = `
+// API Helper
+const API_BASE_URL = "https://api.example.com";
+
+async function fetchData(endpoint) {
+    try {
+        const response = await fetch(\`\${API_BASE_URL}/\${endpoint}\`);
+        if (!response.ok) {
+            throw new Error(\`HTTP error! status: \${response.status}\`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error("Fetch error:", error);
+        throw error;
+    }
+}
+
+async function postData(endpoint, data) {
+    try {
+        const response = await fetch(\`\${API_BASE_URL}/\${endpoint}\`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(data)
+        });
+        return await response.json();
+    } catch (error) {
+        console.error("Post error:", error);
+        throw error;
+    }
+}
+
+export { fetchData, postData };
+`;
+
+fs.writeFile("./assets/js/api.js", jsContent2);
+print("Created: assets/js/api.js\n");
+
+// ============ 使用资源打包 ============
+
+print("--- Asset Bundling ---\n");
+
+// 示例 1: 压缩 CSS
+print("1. Minifying CSS...");
+const cssMinifyResult = asset.minify(cssContent, "css");
+print("Original size: " + cssMinifyResult.original + " bytes");
+print("Minified size: " + cssMinifyResult.minified + " bytes");
+print("Compression ratio: " + Math.round(cssMinifyResult.ratio) + "%");
+print("Minified CSS preview: " + cssMinifyResult.content.substring(0, 100) + "...\n");
+
+// 示例 2: 压缩 JS
+print("2. Minifying JS...");
+const jsMinifyResult = asset.minify(jsContent, "js");
+print("Original size: " + jsMinifyResult.original + " bytes");
+print("Minified size: " + jsMinifyResult.minified + " bytes");
+print("Compression ratio: " + Math.round(jsMinifyResult.ratio) + "%");
+print("Minified JS preview: " + jsMinifyResult.content.substring(0, 100) + "...\n");
+
+// 示例 3: 生成内容哈希
+print("3. Generating content hash...");
+const hashResult = asset.hash("Hello, World!");
+print("Hash (8 chars): " + hashResult.hash);
+print("Full hash: " + hashResult.full + "\n");
+
+// 示例 4: 打包 CSS 文件
+print("4. Bundling CSS files...");
+const cssBundleResult = asset.bundle("./dist/css", {
+    files: [
+        "./assets/css/main.css",
+        "./assets/css/components.css"
+    ],
+    minify: true,
+    hash: true,
+    concat: true
+});
+
+print("Bundled " + cssBundleResult.count + " files");
+print("Output directory: " + cssBundleResult.output);
+
+// 显示清单
+print("\nManifest:");
+for (var file in cssBundleResult.manifest) {
+    const info = cssBundleResult.manifest[file];
+    if (file === "__bundle__") {
+        print("  Bundle: " + info.output);
+        print("    Hash: " + info.hash);
+        print("    Size: " + info.size + " bytes");
+        print("    Files: " + info.files.length);
+    } else {
+        print("  " + file);
+        print("    -> " + info.output);
+        print("    Hash: " + info.hash);
+        print("    Size: " + info.size + " bytes");
+    }
+}
+
+print("");
+
+// 示例 5: 打包 JS 文件
+print("5. Bundling JS files...");
+const jsBundleResult = asset.bundle("./dist/js", {
+    files: [
+        "./assets/js/app.js",
+        "./assets/js/api.js"
+    ],
+    minify: true,
+    hash: true,
+    concat: false  // 不合并
+});
+
+print("Bundled " + jsBundleResult.count + " files");
+print("Output directory: " + jsBundleResult.output + "\n");
+
+// 示例 6: 生成版本化文件名
+print("6. Versioning files...");
+const versionResult = asset.version("./assets/css/main.css");
+print("Original: " + versionResult.path);
+print("Hash: " + versionResult.hash);
+print("Versioned: " + versionResult.versioned);
+print("Query string: " + versionResult.query + "\n");
+
+// 示例 7: 分析资源目录
+print("7. Analyzing asset directory...");
+const analyzeResult = asset.analyze("./assets");
+print("Total files: " + analyzeResult.fileCount);
+print("Total size: " + analyzeResult.totalSize + " bytes");
+
+print("\nBy extension:");
+for (var ext in analyzeResult.byExtension) {
+    const stats = analyzeResult.byExtension[ext];
+    print("  " + ext + ":");
+    print("    Count: " + stats.count);
+    print("    Size: " + stats.size + " bytes");
+}
+
+print("");
+
+// 示例 8: 清理旧文件
+print("8. Cleaning old files...");
+const cleanResult = asset.clean("./dist", "*.js");
+print("Removed " + cleanResult.count + " files");
+
+print("");
+
+// ============ 生成 HTML 并引用打包资源 ============
+
+print("--- Generating HTML with Bundled Assets ---\n");
+
+const htmlTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Application</title>
+    <link rel="stylesheet" href="css/bundle.BUNDLE_HASH.css">
+</head>
+<body>
+    <div class="header">
+        <h1>Welcome to My Application</h1>
+    </div>
+    
+    <div class="nav">
+        <div class="logo">MyApp</div>
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/about">About</a></li>
+            <li><a href="/contact">Contact</a></li>
+        </ul>
+    </div>
+    
+    <div class="container">
+        <div class="card">
+            <h2>Getting Started</h2>
+            <p>This is a sample application with bundled assets.</p>
+            <button class="button">Click Me</button>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <p>&copy; 2026 My Application</p>
+    </div>
+    
+    <script src="js/bundle.BUNDLE_HASH.js"></script>
+</body>
+</html>
+`;
+
+// 替换哈希占位符
+let finalHtml = htmlTemplate;
+
+// 获取 CSS bundle 哈希
+const cssBundleInfo = cssBundleResult.manifest["__bundle__"];
+if (cssBundleInfo) {
+    finalHtml = finalHtml.replace("BUNDLE_HASH.css", cssBundleInfo.hash + ".css");
+}
+
+// 获取 JS bundle 哈希
+const jsBundleInfo = jsBundleResult.manifest["__bundle__"];
+if (jsBundleInfo) {
+    finalHtml = finalHtml.replace("BUNDLE_HASH.js", jsBundleInfo.hash + ".js");
+}
+
+fs.writeFile("./dist/index.html", finalHtml);
+print("Generated: dist/index.html\n");
+
+print("=== Example Complete ===");
+print("\nGenerated files:");
+print("  dist/css/bundle.*.css - Minified and hashed CSS");
+print("  dist/js/*.js - Minified and hashed JS files");
+print("  dist/index.html - HTML with bundled asset references");
+print("\nTo view the output, check the dist/ directory.");

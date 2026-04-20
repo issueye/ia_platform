@@ -1,0 +1,6 @@
+import { llm } from "@agent/sdk";
+
+let msg = llm.chat("plan a simple agent loop");
+print(msg);
+let s = "step-" + 1 + 2;
+print(s);

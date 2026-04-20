@@ -1,0 +1,7 @@
+import * as strconv from "strconv";
+
+function main() {
+  print(strconv.atoi("42"));
+  print(strconv.formatFloat(3.14159, 2));
+  print(strconv.parseBool("true"));
+}

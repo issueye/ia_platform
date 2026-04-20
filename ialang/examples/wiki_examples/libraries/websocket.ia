@@ -1,0 +1,16 @@
+import * as websocket from "websocket";
+
+function main() {
+  let s = websocket.server.serve({
+    addr: "127.0.0.1:0",
+    path: "/chat",
+    echo: true,
+    welcome: "ready"
+  });
+  let c = websocket.client.connect(s.url);
+  print(c.recv());
+  c.send("ping");
+  print(c.recv());
+  c.close();
+  s.close();
+}

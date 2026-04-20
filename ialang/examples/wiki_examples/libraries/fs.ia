@@ -1,0 +1,8 @@
+import * as fs from "fs";
+
+function main() {
+  fs.mkdir("./.tmp/wiki_examples/fs", true);
+  fs.writeFile("./.tmp/wiki_examples/fs/demo.txt", "hello");
+  print(fs.exists("./.tmp/wiki_examples/fs/demo.txt"));
+  print(fs.readFile("./.tmp/wiki_examples/fs/demo.txt"));
+}

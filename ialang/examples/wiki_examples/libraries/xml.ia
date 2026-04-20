@@ -1,0 +1,7 @@
+import * as xml from "xml";
+
+function main() {
+  let doc = xml.parse("<user><name>alice</name></user>");
+  print(doc.name);
+  print(xml.valid("<root></root>"));
+}

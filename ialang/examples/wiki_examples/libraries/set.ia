@@ -1,0 +1,7 @@
+import * as setlib from "set";
+
+function main() {
+  print(setlib.union([1, 2], [2, 3]));
+  print(setlib.intersect([1, 2, 3], [2, 4]));
+  print(setlib.diff([1, 2, 3], [2]));
+}

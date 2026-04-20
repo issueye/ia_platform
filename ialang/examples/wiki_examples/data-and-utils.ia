@@ -1,0 +1,210 @@
+import * as math from "math";
+import * as string from "string";
+import * as array from "array";
+import * as sort from "sort";
+import * as setlib from "set";
+import * as strconv from "strconv";
+import * as rand from "rand";
+import * as log from "log";
+import { llm, tool, memory } from "@agent/sdk";
+import { all, race, allSettled } from "Promise";
+import * as json from "json";
+import * as yaml from "yaml";
+import * as toml from "toml";
+import * as xml from "xml";
+import * as csv from "csv";
+import * as encoding from "encoding";
+import * as hex from "hex";
+import * as bytes from "bytes";
+import * as mime from "mime";
+import * as crypto from "crypto";
+import * as hash from "hash";
+import * as hmac from "hmac";
+import * as uuid from "uuid";
+import * as regexp from "regexp";
+import * as url from "url";
+import { db } from "db";
+import * as orm from "orm";
+
+function demoCollections() {
+  print(math.sqrt(16));
+  print(math.pow(2, 8));
+  print(math.PI);
+
+  let text = "  hello,ialang  ";
+  print(text.trim().toUpperCase());
+  print(string.split("a,b,c", ","));
+
+  let nums = array.range(1, 5);
+  nums.push(9);
+  print(nums.join("-"));
+  print(nums.at(-1));
+
+  print(sort.asc([5, 2, 9, 2]));
+  print(setlib.union([1, 2], [2, 3]));
+  print(strconv.atoi("42"));
+  print(rand.int(100));
+}
+
+function demoLoggingAndSDK() {
+  log["setJSON"](true);
+  log.info("job started", {
+    service: "wiki-demo",
+    batch: 3
+  });
+
+  print(llm.chat("summarize the build plan"));
+  print(tool.call("deploy.preview", "web"));
+  print(memory["get"]("last_release"));
+}
+
+async function task1() {
+  return "a";
+}
+
+async function task2() {
+  return "b";
+}
+
+async function demoPromise() {
+  print(await all([task1(), task2()]));
+  print(await race([task1(), task2()]));
+  print(await allSettled([task1(), task2()]));
+}
+
+function demoFormats() {
+  let obj = json.parse(`{"name":"ialang","ok":true}`);
+  print(obj.name);
+  print(json.stringify(obj, true));
+
+  let yamlCfg = yaml.parse(`server:
+  host: localhost
+  port: 8080
+`);
+  print(yamlCfg.server.host);
+  print(yaml.stringify({
+    app: {
+      name: "demo"
+    }
+  }));
+
+  let tomlCfg = toml.parse(`[server]
+host = "localhost"
+port = 3000
+`);
+  print(tomlCfg.server.port);
+  print(toml.stringify({
+    title: "demo",
+    version: "1.0.0"
+  }));
+
+  let doc = xml.parse("<user><name>alice</name></user>");
+  print(doc.name);
+  print(xml.valid("<root></root>"));
+
+  let rows = csv.parse(`name,age
+alice,18
+bob,20
+`);
+  print(rows[1][0]);
+  print(csv.stringify([["id", "name"], ["1", "alice"]]));
+}
+
+function demoEncodingAndBinary() {
+  let b64 = encoding.base64Encode("hello");
+  print(b64);
+  print(encoding.base64Decode(b64));
+  print(encoding.urlEncode("a b+c"));
+
+  let encoded = hex.encode("ialang");
+  print(encoded);
+  print(hex.decode(encoded));
+
+  let data = bytes.fromString("hello");
+  print(bytes.toBase64(data));
+  print(bytes.toString(data));
+
+  print(mime.typeByExt(".json"));
+  print(mime.extByType("text/html"));
+  print(mime.detectByPath("./examples/hello.ia"));
+}
+
+function demoSecurity() {
+  print(crypto.sha256("secret"));
+  print(crypto.md5("secret"));
+
+  print(hash.sha1("demo"));
+  print(hash.sha512("demo"));
+  print(hash.crc32("demo"));
+
+  let sig = hmac.sha256("key-1", "payload");
+  print(sig);
+  print(hmac.verifySha256("key-1", "payload", sig));
+
+  let id = uuid.v4();
+  print(id);
+  print(uuid.isValid(id));
+
+  let re = regexp.compile("(\\w+)-(\\d+)");
+  print(re.find("item-42"));
+  print(regexp.findAllSubmatch("(\\w+)-(\\d+)", "item-42 task-7"));
+
+  let parsed = url.parse("https://example.com/api?q=ialang#top");
+  print(parsed.host);
+  print(url.queryEncode({
+    q: "ialang",
+    page: "1"
+  }));
+  print(url.queryDecode("q=ialang&page=1"));
+}
+
+function demoDatabase() {
+  let conn = db.sqlite(":memory:");
+  conn.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)");
+  conn.exec("INSERT INTO users (name) VALUES (?)", ["alice"]);
+
+  let rows = conn.query("SELECT * FROM users");
+  print(rows[0].name);
+  conn.close();
+}
+
+function demoORM() {
+  let conn = db.sqlite(":memory:");
+  let runtimeORM = orm.init(conn);
+  print(runtimeORM != null);
+
+  let User = orm.defineModel("User", {
+    name: {
+      type: orm.DataTypes.STRING,
+      notNull: true
+    },
+    age: {
+      type: orm.DataTypes.INTEGER
+    }
+  });
+
+  let qb = orm.QueryBuilder(User);
+  qb = qb.where({
+    name: "alice"
+  });
+  qb = qb.order("age", "DESC");
+  qb = qb.limit(10);
+
+  let query = orm.buildQuery(qb);
+  print(query.sql);
+  print(query.params);
+
+  conn.close();
+}
+
+function main() {
+  print("wiki example => data-and-utils");
+  demoCollections();
+  demoLoggingAndSDK();
+  demoFormats();
+  demoEncodingAndBinary();
+  demoSecurity();
+  demoDatabase();
+  demoORM();
+  print("other demos available: demoPromise");
+}

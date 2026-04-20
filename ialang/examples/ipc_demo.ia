@@ -1,0 +1,21 @@
+import { server, client } from "ipc";
+import { stringify } from "json";
+
+let s = server.listen({addr: "127.0.0.1:0"});
+let c = client.connect(s.addr);
+let peer = s.accept();
+c.send({type: "ping", value: 1});
+let msg = peer.recv();
+peer.send({type: "pong", echo: msg});
+let msg2 = c.recv();
+print("recv from server:");
+print(stringify(msg2, true));
+let pending = c.callAsync("sum", {a: 2, b: 3});
+let req = peer.recv();
+peer.reply(req, true, {sum: 5});
+let resp = await pending;
+print("call response:");
+print(stringify(resp, true));
+c.close();
+peer.close();
+s.close();

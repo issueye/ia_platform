@@ -1,0 +1,11 @@
+import * as sse from "sse";
+
+function main() {
+  let server = sse.server.serve({
+    addr: "127.0.0.1:0",
+    path: "/events"
+  });
+  server.send("build-finished", "deploy");
+  print(server.url);
+  server.close();
+}

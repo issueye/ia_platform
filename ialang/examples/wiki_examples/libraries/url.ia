@@ -1,0 +1,8 @@
+import * as url from "url";
+
+function main() {
+  let parsed = url.parse("https://example.com/api?q=ialang#top");
+  print(parsed.host);
+  print(url.queryEncode({ q: "ialang", page: "1" }));
+  print(url.queryDecode("q=ialang&page=1"));
+}

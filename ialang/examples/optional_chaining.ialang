@@ -1,0 +1,141 @@
+// Optional Chaining Operator (?.) Demo
+// This file demonstrates all features of the optional chaining operator
+
+// ============================================================
+// 1. Basic Property Access
+// ============================================================
+
+// When base is null - returns null
+let nullObj = null;
+let result1 = nullObj?.property;
+// result1 is null
+
+// When base is valid - returns property value
+let person = {"name": "Alice", "age": 30};
+let name = person?.name;
+// name is "Alice"
+
+// ============================================================
+// 2. Index Access
+// ============================================================
+
+// When base is null - returns null
+let nullArr = null;
+let result2 = nullArr?.[0];
+// result2 is null
+
+// When base is valid - returns indexed value
+let numbers = [10, 20, 30];
+let first = numbers?.[0];
+// first is 10
+let second = numbers?.[1];
+// second is 20
+
+// ============================================================
+// 3. Function Call
+// ============================================================
+
+// When function is null - returns null
+let nullFn = null;
+let result3 = nullFn?.(1, 2, 3);
+// result3 is null
+
+// When function is valid - calls the function
+let add = function(a, b) { return a + b; };
+let sum = add?.(5, 3);
+// sum is 8
+
+// ============================================================
+// 4. Method Call
+// ============================================================
+
+// When object is null - returns null (short-circuits)
+let nullObj2 = null;
+let result4 = nullObj2?.getValue();
+// result4 is null
+
+// When object is valid - calls the method
+let calculator = {
+    "value": 100,
+    "getValue": function() { return this.value; }
+};
+let calcValue = calculator?.getValue();
+// calcValue is 100
+
+// ============================================================
+// 5. Chained Optional Access
+// ============================================================
+
+// When there's null in the chain - returns null
+let user = null;
+let city = user?.address?.city;
+// city is null
+
+// When all objects are valid - returns final value
+let company = {
+    "department": {
+        "team": {
+            "lead": "Bob"
+        }
+    }
+};
+let teamLead = company?.department?.team?.lead;
+// teamLead is "Bob"
+
+// ============================================================
+// 6. Combining with Nullish Coalescing (??)
+// ============================================================
+
+// Provide default values when optional chaining returns null
+let config = null;
+let timeout = config?.timeout ?? 5000;
+// timeout is 5000 (default)
+
+let settings = {"timeout": 3000};
+let requestTimeout = settings?.timeout ?? 5000;
+// requestTimeout is 3000
+
+// ============================================================
+// 7. Safe Navigation Pattern
+// ============================================================
+
+// Traditional approach (would error without optional chaining):
+// let value = null.property; // ERROR!
+
+// With optional chaining (safe):
+let safeValue = null?.property;
+// safeValue is null - no error!
+
+// ============================================================
+// 8. Real-World Example: API Response Handling
+// ============================================================
+
+let apiResponse = null;
+let userName = apiResponse?.user?.profile?.name ?? "Anonymous";
+// userName is "Anonymous" when response is null
+
+let successResponse = {
+    "user": {
+        "profile": {
+            "name": "John Doe",
+            "email": "john@example.com"
+        }
+    }
+};
+let extractedName = successResponse?.user?.profile?.name;
+// extractedName is "John Doe"
+
+// ============================================================
+// Summary
+// ============================================================
+// The optional chaining operator (?.) provides:
+// 1. Safe property access: obj?.prop
+// 2. Safe index access: arr?.[index]
+// 3. Safe function call: fn?.(args)
+// 4. Safe method call: obj?.method(args)
+// 
+// Key behavior:
+// - Returns null if base is null or undefined
+// - Short-circuits evaluation (doesn't throw errors)
+// - Works with chaining for deep navigation
+// - Combines well with nullish coalescing (??)

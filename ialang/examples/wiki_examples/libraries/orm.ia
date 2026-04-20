@@ -1,0 +1,17 @@
+import { db } from "db";
+import * as orm from "orm";
+
+function main() {
+  let conn = db.sqlite(":memory:");
+  let runtimeORM = orm.init(conn);
+  print(runtimeORM != null);
+  let User = orm.defineModel("User", {
+    name: { type: orm.DataTypes.STRING, notNull: true },
+    age: { type: orm.DataTypes.INTEGER }
+  });
+  let qb = orm.QueryBuilder(User).where({ name: "alice" }).order("age", "DESC").limit(10);
+  let query = orm.buildQuery(qb);
+  print(query.sql);
+  print(query.params);
+  conn.close();
+}

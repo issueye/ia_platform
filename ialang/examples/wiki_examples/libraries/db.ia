@@ -1,0 +1,10 @@
+import { db } from "db";
+
+function main() {
+  let conn = db.sqlite(":memory:");
+  conn.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)");
+  conn.exec("INSERT INTO users (name) VALUES (?)", ["alice"]);
+  let rows = conn.query("SELECT * FROM users");
+  print(rows[0].name);
+  conn.close();
+}

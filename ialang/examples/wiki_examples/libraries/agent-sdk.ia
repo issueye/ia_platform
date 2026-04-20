@@ -1,0 +1,7 @@
+import { llm, tool, memory } from "@agent/sdk";
+
+function main() {
+  print(llm.chat("summarize the release plan"));
+  print(tool.call("deploy.preview"));
+  print(memory["get"]("last_release"));
+}

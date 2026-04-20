@@ -1,0 +1,7 @@
+import * as hash from "hash";
+
+function main() {
+  print(hash.sha1("demo"));
+  print(hash.sha512("demo"));
+  print(hash.crc32("demo"));
+}

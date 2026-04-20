@@ -1,0 +1,7 @@
+import * as hmac from "hmac";
+
+function main() {
+  let sig = hmac.sha256("key-1", "payload");
+  print(sig);
+  print(hmac.verifySha256("key-1", "payload", sig));
+}

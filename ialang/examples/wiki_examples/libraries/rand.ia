@@ -1,0 +1,8 @@
+import * as rand from "rand";
+
+function main() {
+  print(rand.int(100));
+  print(rand.float(1, 10));
+  print(rand.pick(["red", "green", "blue"]));
+  print(rand.string(8));
+}

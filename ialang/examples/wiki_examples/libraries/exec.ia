@@ -1,0 +1,10 @@
+import * as exec from "exec";
+
+function main() {
+  let result = exec.run("go", {
+    args: ["version"],
+    timeoutMs: 5000
+  });
+  print(result.ok);
+  print(result.stdout);
+}

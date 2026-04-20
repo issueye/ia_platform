@@ -1,0 +1,7 @@
+import * as hex from "hex";
+
+function main() {
+  let encoded = hex.encode("ialang");
+  print(encoded);
+  print(hex.decode(encoded));
+}

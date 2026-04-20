@@ -1,0 +1,6 @@
+import * as sort from "sort";
+
+function main() {
+  print(sort.asc([5, 2, 9, 2]));
+  print(sort.unique([1, 1, 2, 3, 3]));
+}

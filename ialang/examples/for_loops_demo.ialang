@@ -1,0 +1,76 @@
+// Comprehensive example demonstrating for-in and for-of loops in ialang
+
+// Example 1: Iterate over object properties with for-in
+print("=== Example 1: for-in loop over object ===");
+let person = { name: "张三", age: 25, city: "北京" };
+
+for (key in person) {
+  print("  ", key, ": ", person[key]);
+}
+
+// Example 2: Iterate over array elements with for-of
+print("\n=== Example 2: for-of loop over array ===");
+let fruits = ["苹果", "香蕉", "橙子", "葡萄"];
+
+for (fruit of fruits) {
+  print("  水果: ", fruit);
+}
+
+// Example 3: Using break in for-in loop
+print("\n=== Example 3: for-in with break ===");
+let count = 0;
+for (key in person) {
+  if (count >= 2) {
+    break;
+  }
+  print("  Key ", count, ": ", key);
+  count = count + 1;
+}
+
+// Example 4: Using continue in for-of loop
+print("\n=== Example 4: for-of with continue ===");
+for (fruit of fruits) {
+  if (fruit == "香蕉") {
+    continue;
+  }
+  print("  喜欢: ", fruit);
+}
+
+// Example 5: Nested loops
+print("\n=== Example 5: Nested for-of loops ===");
+let matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+
+for (row of matrix) {
+  let sum = 0;
+  for (val of row) {
+    sum = sum + val;
+  }
+  print("  Row sum: ", sum);
+}
+
+// Example 6: Accumulating values with for-in
+print("\n=== Example 6: Sum object values with for-in ===");
+let scores = { math: 90, english: 85, science: 92 };
+let total = 0;
+let subjectCount = 0;
+
+for (subject in scores) {
+  total = total + scores[subject];
+  subjectCount = subjectCount + 1;
+}
+
+print("  Total score: ", total);
+print("  Average: ", total / subjectCount);
+
+// Example 7: Transforming array with for-of
+print("\n=== Example 7: Transform array with for-of ===");
+let numbers = [1, 2, 3, 4, 5];
+
+print("  Original: [1, 2, 3, 4, 5]");
+print("  Squares:");
+for (num of numbers) {
+  let square = num * num;
+  print("    ", num, "^2 = ", square);
+}
+
+print("\n=== All examples completed successfully! ===");

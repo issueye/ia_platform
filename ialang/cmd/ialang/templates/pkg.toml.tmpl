@@ -1,0 +1,11 @@
+name = "{{ .ProjectName }}"
+version = "0.1.0"
+entry = "main.ia"
+
+[imports]
+root_alias = "@"
+
+[build]
+package = "app.iapkg"
+standalone = "{{ .ProjectName }}.exe"
+

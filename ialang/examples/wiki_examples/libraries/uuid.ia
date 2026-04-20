@@ -1,0 +1,7 @@
+import * as uuid from "uuid";
+
+function main() {
+  let id = uuid.v4();
+  print(id);
+  print(uuid.isValid(id));
+}

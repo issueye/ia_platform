@@ -1,0 +1,10 @@
+import * as timer from "timer";
+
+function main() {
+  function onDone() {
+    print("timer fired");
+  }
+  let id = timer.setTimeout(onDone, 200);
+  timer.clearTimeout(id);
+  print("timer scheduled and cleared");
+}

@@ -1,0 +1,9 @@
+import * as log from "log";
+
+function main() {
+  log.setJSON(true);
+  log.info("job started", {
+    service: "wiki-demo",
+    batch: 3
+  });
+}

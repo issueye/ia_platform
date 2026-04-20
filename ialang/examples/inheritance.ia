@@ -1,0 +1,45 @@
+class Animal {
+  constructor(name) {
+    this.name = name;
+  }
+  speak() {
+    return this.name + " makes a sound";
+  }
+  getType() {
+    return "animal";
+  }
+}
+
+class Dog extends Animal {
+  constructor(name, breed) {
+    super(name);
+    this.breed = breed;
+  }
+  speak() {
+    return this.name + " barks";
+  }
+  getBreed() {
+    return this.breed;
+  }
+}
+
+class Cat extends Animal {
+  constructor(name) {
+    super(name);
+  }
+  speak() {
+    return this.name + " meows";
+  }
+}
+
+let dog = new Dog("Buddy", "Labrador");
+print("dog.speak() => " + dog.speak());
+print("dog.getBreed() => " + dog.getBreed());
+print("dog.getType() => " + dog.getType());
+let cat = new Cat("Whiskers");
+print("cat.speak() => " + cat.speak());
+print("cat.getType() => " + cat.getType());
+let animal = new Animal("Generic");
+print("animal.speak() => " + animal.speak());
+print("animal.getType() => " + animal.getType());
+print("=== inheritance tests done ===");

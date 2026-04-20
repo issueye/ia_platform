@@ -1,0 +1,272 @@
+// Express 框架示例 - RESTful API
+// 运行: ialang run examples/express/rest.ialang
+
+import { express, logger, recovery, cors } from "express";
+
+const app = express();
+
+// 中间件
+app.use(recovery());
+app.use(logger());
+app.use(cors());
+
+// 模拟数据库
+let users = [
+    { id: 1, name: "Alice", email: "alice@example.com", age: 25 },
+    { id: 2, name: "Bob", email: "bob@example.com", age: 30 },
+    { id: 3, name: "Charlie", email: "charlie@example.com", age: 35 }
+];
+let nextId = 4;
+
+// ============ 用户资源 ============
+
+// GET /users - 获取所有用户（支持分页和搜索）
+app.get("/users", (ctx) => {
+    const page = parseInt(ctx.query("page") || "1");
+    const limit = parseInt(ctx.query("limit") || "10");
+    const search = ctx.query("search");
+    
+    let filteredUsers = users;
+    
+    // 搜索过滤
+    if (search) {
+        filteredUsers = users.filter((user) => {
+            return user.name.indexOf(search) !== -1 || user.email.indexOf(search) !== -1;
+        });
+    }
+    
+    // 分页
+    const start = (page - 1) * limit;
+    const end = start + limit;
+    const paginatedUsers = filteredUsers.slice(start, end);
+    
+    ctx.json({
+        data: paginatedUsers,
+        pagination: {
+            page: page,
+            limit: limit,
+            total: filteredUsers.length,
+            totalPages: Math.ceil(filteredUsers.length / limit)
+        }
+    });
+});
+
+// GET /users/:id - 获取单个用户
+app.get("/users/:id", (ctx) => {
+    const id = parseInt(ctx.param("id"));
+    const user = users.find((u) => u.id === id);
+    
+    if (!user) {
+        ctx.status(404).json({
+            error: "Not Found",
+            message: "User with id " + id + " not found"
+        });
+        return;
+    }
+    
+    ctx.json({
+        data: user
+    });
+});
+
+// POST /users - 创建用户
+app.post("/users", (ctx) => {
+    const body = ctx.body();
+    
+    // 验证必填字段
+    if (!body.name || !body.email) {
+        ctx.status(400).json({
+            error: "Bad Request",
+            message: "Name and email are required"
+        });
+        return;
+    }
+    
+    const newUser = {
+        id: nextId,
+        name: body.name,
+        email: body.email,
+        age: body.age || 0
+    };
+    
+    users.push(newUser);
+    nextId++;
+    
+    ctx.status(201).json({
+        data: newUser,
+        message: "User created successfully"
+    });
+});
+
+// PUT /users/:id - 更新用户
+app.put("/users/:id", (ctx) => {
+    const id = parseInt(ctx.param("id"));
+    const body = ctx.body();
+    
+    const userIndex = users.findIndex((u) => u.id === id);
+    
+    if (userIndex === -1) {
+        ctx.status(404).json({
+            error: "Not Found",
+            message: "User with id " + id + " not found"
+        });
+        return;
+    }
+    
+    // 更新用户信息
+    users[userIndex] = {
+        ...users[userIndex],
+        name: body.name || users[userIndex].name,
+        email: body.email || users[userIndex].email,
+        age: body.age || users[userIndex].age
+    };
+    
+    ctx.json({
+        data: users[userIndex],
+        message: "User updated successfully"
+    });
+});
+
+// DELETE /users/:id - 删除用户
+app.delete("/users/:id", (ctx) => {
+    const id = parseInt(ctx.param("id"));
+    const userIndex = users.findIndex((u) => u.id === id);
+    
+    if (userIndex === -1) {
+        ctx.status(404).json({
+            error: "Not Found",
+            message: "User with id " + id + " not found"
+        });
+        return;
+    }
+    
+    const deletedUser = users[userIndex];
+    users.splice(userIndex, 1);
+    
+    ctx.json({
+        data: deletedUser,
+        message: "User deleted successfully"
+    });
+});
+
+// ============ 文章资源 ============
+
+let posts = [
+    { id: 1, title: "First Post", content: "Content 1", userId: 1 },
+    { id: 2, title: "Second Post", content: "Content 2", userId: 2 }
+];
+let nextPostId = 3;
+
+// GET /posts - 获取所有文章
+app.get("/posts", (ctx) => {
+    const userId = ctx.query("userId");
+    
+    let filteredPosts = posts;
+    
+    if (userId) {
+        filteredPosts = posts.filter((p) => p.userId === parseInt(userId));
+    }
+    
+    ctx.json({
+        data: filteredPosts,
+        total: filteredPosts.length
+    });
+});
+
+// GET /posts/:id - 获取单个文章
+app.get("/posts/:id", (ctx) => {
+    const id = parseInt(ctx.param("id"));
+    const post = posts.find((p) => p.id === id);
+    
+    if (!post) {
+        ctx.status(404).json({
+            error: "Not Found",
+            message: "Post with id " + id + " not found"
+        });
+        return;
+    }
+    
+    ctx.json({
+        data: post
+    });
+});
+
+// POST /posts - 创建文章
+app.post("/posts", (ctx) => {
+    const body = ctx.body();
+    
+    if (!body.title || !body.content) {
+        ctx.status(400).json({
+            error: "Bad Request",
+            message: "Title and content are required"
+        });
+        return;
+    }
+    
+    const newPost = {
+        id: nextPostId,
+        title: body.title,
+        content: body.content,
+        userId: body.userId || 0
+    };
+    
+    posts.push(newPost);
+    nextPostId++;
+    
+    ctx.status(201).json({
+        data: newPost,
+        message: "Post created successfully"
+    });
+});
+
+// ============ 统计信息 ============
+
+app.get("/stats", (ctx) => {
+    ctx.json({
+        users: users.length,
+        posts: posts.length,
+        endpoints: [
+            "GET    /users",
+            "GET    /users/:id",
+            "POST   /users",
+            "PUT    /users/:id",
+            "DELETE /users/:id",
+            "GET    /posts",
+            "GET    /posts/:id",
+            "POST   /posts",
+            "GET    /stats"
+        ]
+    });
+});
+
+// ============ 启动服务器 ============
+
+print("========================================");
+print("  RESTful API Server");
+print("========================================");
+print("");
+print("Resources:");
+print("  Users: " + users.length);
+print("  Posts: " + posts.length);
+print("");
+print("Endpoints:");
+print("  GET    /users          - List all users");
+print("  GET    /users/:id      - Get user by ID");
+print("  POST   /users          - Create user");
+print("  PUT    /users/:id      - Update user");
+print("  DELETE /users/:id      - Delete user");
+print("  GET    /posts          - List all posts");
+print("  GET    /posts/:id      - Get post by ID");
+print("  POST   /posts          - Create post");
+print("  GET    /stats          - Get statistics");
+print("");
+print("Examples:");
+print("  curl http://127.0.0.1:3000/users");
+print("  curl http://127.0.0.1:3000/users/1");
+print("  curl -X POST -H 'Content-Type: application/json' -d '{\"name\":\"David\",\"email\":\"david@example.com\"}' http://127.0.0.1:3000/users");
+print("  curl http://127.0.0.1:3000/posts");
+print("  curl http://127.0.0.1:3000/stats");
+print("");
+
+const server = app.listen("127.0.0.1:3000");
+print("Server running at " + server.addr);

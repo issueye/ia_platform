@@ -1,0 +1,132 @@
+package main
+
+import (
+	"ialang/pkg/express"
+	"log"
+)
+
+func main() {
+	// 创建应用实例
+	app := express.New()
+	
+	// 使用全局中间件
+	app.Use(express.Recovery())
+	app.Use(express.Logger())
+	app.Use(express.CORS())
+	
+	// 基本路由
+	app.GET("/", func(ctx *express.Context) {
+		ctx.JSON(map[string]interface{}{
+			"message": "Hello, Express!",
+		})
+	})
+	
+	// 路径参数
+	app.GET("/users/:id", func(ctx *express.Context) {
+		id := ctx.Param("id")
+		ctx.JSON(map[string]interface{}{
+			"user_id": id,
+		})
+	})
+	
+	// 查询参数
+	app.GET("/search", func(ctx *express.Context) {
+		query := ctx.QueryParam("q")
+		page := ctx.QueryParam("page")
+		ctx.JSON(map[string]interface{}{
+			"query": query,
+			"page":  page,
+		})
+	})
+	
+	// POST 请求 - JSON Body
+	app.POST("/users", func(ctx *express.Context) {
+		body := ctx.GetBody()
+		ctx.Status(201).JSON(map[string]interface{}{
+			"message": "User created",
+			"user":    body,
+		})
+	})
+	
+	// 路由组
+	api := app.Group("/api/v1")
+	{
+		api.GET("/users", getUsers)
+		api.POST("/users", createUser)
+		api.GET("/users/:id", getUser)
+		api.PUT("/users/:id", updateUser)
+		api.DELETE("/users/:id", deleteUser)
+	}
+	
+	// 带中间件的路由
+	app.GET("/admin", authMiddleware(), func(ctx *express.Context) {
+		ctx.JSON(map[string]interface{}{
+			"message": "Admin panel",
+		})
+	})
+	
+	// 静态文件
+	app.Static("/static", "./public")
+	
+	// 启动服务器
+	log.Fatal(app.Listen(":3000"))
+}
+
+// 示例处理器函数
+func getUsers(ctx *express.Context) {
+	ctx.JSON(map[string]interface{}{
+		"users": []string{"Alice", "Bob", "Charlie"},
+	})
+}
+
+func createUser(ctx *express.Context) {
+	body := ctx.GetBody()
+	ctx.Status(201).JSON(map[string]interface{}{
+		"message": "User created",
+		"user":    body,
+	})
+}
+
+func getUser(ctx *express.Context) {
+	id := ctx.Param("id")
+	ctx.JSON(map[string]interface{}{
+		"id":   id,
+		"name": "User " + id,
+	})
+}
+
+func updateUser(ctx *express.Context) {
+	id := ctx.Param("id")
+	body := ctx.GetBody()
+	ctx.JSON(map[string]interface{}{
+		"message": "User updated",
+		"id":      id,
+		"user":    body,
+	})
+}
+
+func deleteUser(ctx *express.Context) {
+	id := ctx.Param("id")
+	ctx.JSON(map[string]interface{}{
+		"message": "User deleted",
+		"id":      id,
+	})
+}
+
+// 认证中间件示例
+func authMiddleware() express.MiddlewareFunc {
+	return func(ctx *express.Context) {
+		token := ctx.Header("Authorization")
+		if token == "" {
+			ctx.Status(401).JSON(map[string]interface{}{
+				"error": "Unauthorized",
+			})
+			ctx.Abort()
+			return
+		}
+		
+		// 验证 token
+		ctx.SetStore("user", "admin")
+		ctx.Next()
+	}
+}

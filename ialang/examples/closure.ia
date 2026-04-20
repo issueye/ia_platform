@@ -1,0 +1,15 @@
+function makeCounter(start) {
+  let n = start;
+  function inc() {
+    n = n + 1;
+    return n;
+  }
+  return inc;
+}
+
+let c1 = makeCounter(0);
+print("c1-1: " + c1());
+print("c1-2: " + c1());
+let c2 = makeCounter(10);
+print("c2-1: " + c2());
+print("c1-3: " + c1());

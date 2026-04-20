@@ -1,0 +1,7 @@
+import * as bytes from "bytes";
+
+function main() {
+  let data = bytes.fromString("hello");
+  print(bytes.toBase64(data));
+  print(bytes.toString(data));
+}

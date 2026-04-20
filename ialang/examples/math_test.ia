@@ -1,0 +1,22 @@
+import { abs, ceil, floor, round, sqrt, pow, max, min, mod, random, log, log10, sin, cos, tan, PI, E } from "math";
+
+print("=== math module tests ===");
+print("PI = " + PI);
+print("E = " + E);
+print("abs(-5.5) = " + abs(-5.5));
+print("ceil(3.2) = " + ceil(3.2));
+print("floor(3.8) = " + floor(3.8));
+print("round(3.5) = " + round(3.5));
+print("sqrt(16) = " + sqrt(16));
+print("pow(2, 10) = " + pow(2, 10));
+print("max(3, 7) = " + max(3, 7));
+print("min(3, 7) = " + min(3, 7));
+print("mod(17, 5) = " + mod(17, 5));
+print("log(E) = " + log(E));
+print("log10(100) = " + log10(100));
+print("sin(0) = " + sin(0));
+print("cos(0) = " + cos(0));
+print("tan(0) = " + tan(0));
+let r = random(0, 100);
+print("random(0, 100) = " + r);
+print("=== math tests done ===");

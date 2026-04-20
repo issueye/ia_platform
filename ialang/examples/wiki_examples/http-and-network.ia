@@ -1,0 +1,165 @@
+import * as http from "http";
+import { express, logger, recovery } from "express";
+import * as websocket from "websocket";
+import * as sse from "sse";
+import * as socket from "socket";
+import * as ipc from "ipc";
+import * as iax from "iax";
+import * as net from "net";
+import * as json from "json";
+
+function demoHTTPClient() {
+  let resp = http.client["get"]("https://httpbin.org/get", {
+    timeoutMs: 3000,
+    headers: {
+      "X-Demo": "ialang"
+    }
+  });
+
+  print("http status => " + resp.statusCode);
+  print(resp.body);
+}
+
+function demoHTTPProxy() {
+  let upstream = http.server.serve({
+    addr: "127.0.0.1:0",
+    statusCode: 200,
+    body: "upstream-ok"
+  });
+
+  let proxy = http.server.proxy({
+    addr: "127.0.0.1:0",
+    target: "http://" + upstream.addr,
+    requestMutations: {
+      setHeaders: {
+        "x-proxy": "ialang"
+      }
+    }
+  });
+
+  let result = http.client["get"]("http://" + proxy.addr + "/hello");
+  print("proxy status => " + result.statusCode);
+
+  proxy.close();
+  upstream.close();
+}
+
+function demoExpress() {
+  let app = express();
+  app.use(recovery());
+  app.use(logger());
+
+  app["get"]("/health", function(ctx) {
+    ctx.json({
+      ok: true,
+      service: "wiki-example"
+    });
+  });
+
+  let server = app.listen("127.0.0.1:0");
+  print("express addr => " + server.addr);
+  server.close();
+}
+
+function demoWebSocket() {
+  let server = websocket.server.serve({
+    addr: "127.0.0.1:0",
+    path: "/chat",
+    echo: true,
+    welcome: "connected"
+  });
+
+  let ws = websocket.client.connect(server.url);
+  print(ws.recv());
+  ws.send("hello");
+  print(ws.recv());
+  ws.close();
+  server.close();
+}
+
+function demoSSE() {
+  let server = sse.server.serve({
+    addr: "127.0.0.1:0",
+    path: "/events"
+  });
+
+  server.send("build finished", "deploy");
+  print(server.url);
+  server.close();
+}
+
+function demoSocketTCP() {
+  let listener = socket.server.listen({
+    network: "tcp",
+    addr: "127.0.0.1:0"
+  });
+
+  print("tcp addr => " + listener.addr);
+  listener.close();
+}
+
+function demoSocketUDP() {
+  let endpoint = socket.udp.bind({
+    network: "udp",
+    addr: "127.0.0.1:0"
+  });
+
+  print("udp local => " + endpoint.localAddr());
+  endpoint.close();
+}
+
+function demoIPC() {
+  let server = ipc.server.listen({
+    addr: "127.0.0.1:0"
+  });
+
+  let clientConn = ipc.client.connect(server.addr);
+  let peer = server.accept();
+
+  clientConn.send({
+    type: "ping",
+    value: 1
+  });
+
+  let req = peer.recv();
+  peer.send({
+    type: "pong",
+    echo: req
+  });
+
+  let resp = clientConn.recv();
+  print("ipc => " + json.stringify(resp, true));
+
+  clientConn.close();
+  peer.close();
+  server.close();
+}
+
+function demoIAX() {
+  let req = iax.buildRequest("inventory", "reserve", {
+    sku: "SKU-42",
+    qty: 2
+  });
+
+  print("iax version => " + iax.version());
+  print(req.service);
+  print(req.action);
+}
+
+function demoNet() {
+  let hp = net.parseHostPort("127.0.0.1:8080");
+  print(hp.host);
+  print(hp.port);
+
+  let ips = net.lookupIP("localhost");
+  print("lookup => " + ips);
+  print(net.containsCIDR("192.168.1.0/24", "192.168.1.15"));
+}
+
+function main() {
+  print("wiki example => http-and-network");
+  demoNet();
+  demoIPC();
+  demoIAX();
+  print("other demos available: demoHTTPClient/demoHTTPProxy/demoExpress/demoWebSocket/demoSSE/demoSocketTCP/demoSocketUDP");
+}

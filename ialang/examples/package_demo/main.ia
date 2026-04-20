@@ -1,0 +1,9 @@
+import { appName, appVersion } from "./pkg_meta";
+import { calcAndDescribe, calcAndDescribeAsync } from "./services/calc_service";
+
+print("== " + appName + " v" + appVersion + " ==");
+let syncResult = calcAndDescribe(9, 5);
+print("sync: " + syncResult);
+let asyncPromise = calcAndDescribeAsync(4, 3);
+let asyncResult = await asyncPromise;
+print("async: " + asyncResult);

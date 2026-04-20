@@ -1,0 +1,13 @@
+import { express, logger, recovery } from "express";
+
+function main() {
+  let app = express();
+  app.use(recovery());
+  app.use(logger());
+  app["get"]("/health", function(ctx) {
+    ctx.json({ ok: true });
+  });
+  let server = app.listen("127.0.0.1:0");
+  print(server.addr);
+  server.close();
+}

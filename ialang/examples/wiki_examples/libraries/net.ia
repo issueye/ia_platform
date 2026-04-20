@@ -1,0 +1,8 @@
+import * as net from "net";
+
+function main() {
+  let hp = net.parseHostPort("127.0.0.1:8080");
+  print(hp.host);
+  print(hp.port);
+  print(net.containsCIDR("192.168.1.0/24", "192.168.1.10"));
+}

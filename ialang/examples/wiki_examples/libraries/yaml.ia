@@ -1,0 +1,10 @@
+import * as yaml from "yaml";
+
+function main() {
+  let cfg = yaml.parse(`server:
+  host: localhost
+  port: 8080
+`);
+  print(cfg.server.host);
+  print(yaml.stringify({ app: { name: "demo" } }));
+}

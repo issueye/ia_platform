@@ -1,0 +1,8 @@
+import * as encoding from "encoding";
+
+function main() {
+  let b64 = encoding.base64Encode("hello");
+  print(b64);
+  print(encoding.base64Decode(b64));
+  print(encoding.urlEncode("a b+c"));
+}

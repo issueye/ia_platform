@@ -1,0 +1,14 @@
+.qwen/*
+*.exe
+*.log
+*.txt
+*.db
+
+.gocache/*
+.gomodcache/*
+*gopath/*
+pkg/lang/runtime/builtin/stdout
+pkg/lang/runtime/builtin/test_*
+
+pool_*.out
+test_*

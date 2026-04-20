@@ -1,0 +1,7 @@
+import * as time from "time";
+
+function main() {
+  print(time.nowUnix());
+  print(time.nowUnixMilli());
+  print(time.nowISO());
+}

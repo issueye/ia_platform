@@ -1,0 +1,41 @@
+import { server, client } from "ipc";
+import { callAsync, receive, reply } from "iax";
+import { stringify } from "json";
+
+let s = server.listen({ addr: "127.0.0.1:0" });
+let acceptP = s.acceptAsync();
+let c = client.connect(s.addr);
+let peer = await acceptP;
+
+let pending = callAsync(
+  c,
+  "inventory",
+  "reserve",
+  { sku: "SKU-42", qty: 3 },
+  {
+    requestOptions: {
+      "from": "producer-app",
+      routeMode: "express",
+      routeMethod: "post",
+      routePrefix: "/api"
+    }
+  }
+);
+
+let req = receive(peer);
+if (!req.ok) {
+  print("receive failed: " + req.code + ", " + req.message);
+} else {
+  print("receive ok: " + req.route);
+  print("receive payload:");
+  print(stringify(req.payload, true));
+  reply(peer, req, true, { reserved: true, stockLeft: 97 });
+}
+
+let resp = await pending;
+print("call result:");
+print(stringify(resp, true));
+
+c.close();
+peer.close();
+s.close();

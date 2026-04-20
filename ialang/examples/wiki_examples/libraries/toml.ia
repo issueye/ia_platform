@@ -1,0 +1,10 @@
+import * as toml from "toml";
+
+function main() {
+  let cfg = toml.parse(`[server]
+host = "localhost"
+port = 3000
+`);
+  print(cfg.server.port);
+  print(toml.stringify({ title: "demo", version: "1.0.0" }));
+}

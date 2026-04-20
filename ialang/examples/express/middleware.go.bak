@@ -1,0 +1,62 @@
+package main
+
+import (
+	"ialang/pkg/express"
+	"log"
+)
+
+// 中间件示例
+func main() {
+	app := express.New()
+	
+	// 1. Logger 中间件
+	app.Use(express.Logger())
+	
+	// 2. Recovery 中间件（捕获 panic）
+	app.Use(express.Recovery())
+	
+	// 3. CORS 中间件
+	app.Use(express.CORS())
+	
+	// 4. 自定义中间件
+	app.Use(func(ctx *express.Context) {
+		// 请求前处理
+		log.Printf("Request: %s %s", ctx.Method(), ctx.Path())
+		
+		ctx.Next()
+		
+		// 响应后处理
+		log.Printf("Response: %d", ctx.Writer.Status())
+	})
+	
+	// 5. 路由组中间件
+	api := app.Group("/api")
+	api.Use(func(ctx *express.Context) {
+		// API 版本检查
+		ctx.SetStore("api_version", "v1")
+		ctx.Next()
+	})
+	
+	api.GET("/users", func(ctx *express.Context) {
+		ctx.JSON(map[string]interface{}{
+			"users": []string{"Alice", "Bob"},
+		})
+	})
+	
+	// 6. 单个路由中间件
+	rateLimiter := func(ctx *express.Context) {
+		// 简单的频率限制逻辑
+		ip := ctx.IP()
+		_ = ip // 在实际应用中检查 IP 的请求频率
+		
+		ctx.Next()
+	}
+	
+	app.GET("/limited", rateLimiter, func(ctx *express.Context) {
+		ctx.JSON(map[string]interface{}{
+			"message": "Rate limited endpoint",
+		})
+	})
+	
+	log.Fatal(app.Listen(":3000"))
+}

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test:*)",
+      "mcp__acp__Write",
+      "mcp__acp__Edit",
+      "Bash(go tool cover:*)",
+      "Bash(sort:*)",
+      "Bash(gofmt:*)"
+    ]
+  }
+}

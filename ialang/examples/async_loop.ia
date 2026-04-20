@@ -1,0 +1,19 @@
+async function sumOdd(limit) {
+  let total = 0;
+  for (let i = 0; i < limit; i = i + 1) {
+    if (i == 2) {
+      continue;
+    }
+    if (i > 7) {
+      break;
+    }
+    if (i == 1 || i == 3 || i == 5 || i == 7) {
+      total = total + i;
+    }
+  }
+  return total;
+}
+
+let p = sumOdd(20);
+let v = await p;
+print("sumOdd: " + v);

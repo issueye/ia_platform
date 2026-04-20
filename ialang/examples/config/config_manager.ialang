@@ -1,0 +1,257 @@
+// 配置文件管理示例
+// 运行: ialang run examples/config/config_manager.ialang
+
+import { yaml } from "yaml";
+import { toml } from "toml";
+import { fs } from "fs";
+
+print("=== Configuration File Manager ===\n");
+
+// 配置管理器
+function ConfigManager() {
+    this.data = {};
+    this.filePath = "";
+    this.format = "";
+    
+    // 加载 YAML 配置文件
+    this.loadYaml = function(path) {
+        print("Loading YAML config: " + path);
+        const content = fs.readFile(path);
+        this.data = yaml.parse(content);
+        this.filePath = path;
+        this.format = "yaml";
+        print("Config loaded successfully\n");
+    };
+    
+    // 加载 TOML 配置文件
+    this.loadToml = function(path) {
+        print("Loading TOML config: " + path);
+        const content = fs.readFile(path);
+        this.data = toml.parse(content);
+        this.filePath = path;
+        this.format = "toml";
+        print("Config loaded successfully\n");
+    };
+    
+    // 获取配置值（支持点路径）
+    this.get = function(path, defaultValue) {
+        const keys = path.split(".");
+        let value = this.data;
+        
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            if (value[key] === undefined) {
+                return defaultValue;
+            }
+            value = value[key];
+        }
+        
+        return value;
+    };
+    
+    // 设置配置值
+    this.set = function(path, value) {
+        const keys = path.split(".");
+        let obj = this.data;
+        
+        for (let i = 0; i < keys.length - 1; i++) {
+            const key = keys[i];
+            if (!obj[key]) {
+                obj[key] = {};
+            }
+            obj = obj[key];
+        }
+        
+        obj[keys[keys.length - 1]] = value;
+    };
+    
+    // 保存配置文件
+    this.save = function(path) {
+        const savePath = path || this.filePath;
+        print("Saving config to: " + savePath);
+        
+        let content;
+        if (this.format === "yaml") {
+            content = yaml.stringify(this.data);
+        } else if (this.format === "toml") {
+            content = toml.stringify(this.data);
+        }
+        
+        fs.writeFile(savePath, content);
+        print("Config saved successfully\n");
+    };
+    
+    // 打印配置
+    this.print = function() {
+        print("Current Configuration:");
+        print("Format: " + this.format);
+        print("File: " + this.filePath + "\n");
+        
+        if (this.format === "yaml") {
+            print(yaml.stringify(this.data));
+        } else if (this.format === "toml") {
+            print(toml.stringify(this.data));
+        }
+    };
+}
+
+// ============ 创建示例配置文件 ============
+
+print("Creating sample config files...\n");
+
+// 创建 YAML 配置
+const yamlConfig = `
+app:
+  name: MyApplication
+  version: 1.0.0
+  debug: false
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  ssl:
+    enabled: true
+    cert: /path/to/cert.pem
+    key: /path/to/key.pem
+
+database:
+  driver: postgres
+  host: localhost
+  port: 5432
+  name: myapp
+  user: admin
+  password: secret
+  pool:
+    max: 20
+    min: 5
+    idle_timeout: 30
+
+logging:
+  level: info
+  outputs:
+    - type: console
+      format: text
+    - type: file
+      path: /var/log/app.log
+      format: json
+
+features:
+  enable_cache: true
+  enable_rate_limit: false
+  max_upload_size: 10485760
+`;
+
+fs.writeFile("./config.yaml", yamlConfig);
+print("Created: config.yaml\n");
+
+// 创建 TOML 配置
+const tomlConfig = `
+[app]
+name = "MyApplication"
+version = "1.0.0"
+debug = false
+
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[server.ssl]
+enabled = true
+cert = "/path/to/cert.pem"
+key = "/path/to/key.pem"
+
+[database]
+driver = "mysql"
+host = "localhost"
+port = 3306
+name = "myapp"
+user = "root"
+password = "secret"
+
+[database.pool]
+max = 10
+min = 2
+idle_timeout = 60
+
+[logging]
+level = "debug"
+
+[[logging.outputs]]
+type = "console"
+format = "text"
+
+[[logging.outputs]]
+type = "file"
+path = "/var/log/app.log"
+format = "json"
+
+[features]
+enable_cache = true
+enable_rate_limit = true
+max_upload_size = 5242880
+`;
+
+fs.writeFile("./config.toml", tomlConfig);
+print("Created: config.toml\n");
+
+// ============ 使用配置管理器 ============
+
+print("--- Working with YAML Config ---\n");
+
+const yamlMgr = new ConfigManager();
+yamlMgr.loadYaml("./config.yaml");
+
+// 读取配置
+print("Reading config values:");
+print("App name: " + yamlMgr.get("app.name"));
+print("App version: " + yamlMgr.get("app.version"));
+print("Server host: " + yamlMgr.get("server.host"));
+print("Server port: " + yamlMgr.get("server.port"));
+print("Database driver: " + yamlMgr.get("database.driver"));
+print("Database pool max: " + yamlMgr.get("database.pool.max"));
+print("Logging level: " + yamlMgr.get("logging.level"));
+print("");
+
+// 修改配置
+print("Modifying config...");
+yamlMgr.set("server.port", 9090);
+yamlMgr.set("database.pool.max", 50);
+yamlMgr.set("logging.level", "debug");
+yamlMgr.set("features.enable_cache", false);
+print("Config modified\n");
+
+yamlMgr.print();
+
+// 保存配置
+yamlMgr.save("./config_updated.yaml");
+print("Saved updated config to: config_updated.yaml\n");
+
+print("--- Working with TOML Config ---\n");
+
+const tomlMgr = new ConfigManager();
+tomlMgr.loadToml("./config.toml");
+
+// 读取配置
+print("Reading config values:");
+print("App name: " + tomlMgr.get("app.name"));
+print("App version: " + tomlMgr.get("app.version"));
+print("Server host: " + tomlMgr.get("server.host"));
+print("Database driver: " + tomlMgr.get("database.driver"));
+print("Database port: " + tomlMgr.get("database.port"));
+print("Logging level: " + tomlMgr.get("logging.level"));
+print("");
+
+// 修改配置
+print("Modifying config...");
+tomlMgr.set("app.debug", true);
+tomlMgr.set("server.port", 3000);
+tomlMgr.set("database.pool.max", 30);
+print("Config modified\n");
+
+tomlMgr.print();
+
+// 保存配置
+tomlMgr.save("./config_updated.toml");
+print("Saved updated config to: config_updated.toml\n");
+
+print("=== Example Complete ===");

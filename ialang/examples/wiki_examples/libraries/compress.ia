@@ -1,0 +1,7 @@
+import * as compress from "compress";
+
+function main() {
+  let gz = compress.gzipCompress("hello");
+  print(gz);
+  print(compress.gzipDecompress(gz));
+}

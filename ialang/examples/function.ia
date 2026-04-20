@@ -1,0 +1,16 @@
+import { llm } from "@agent/sdk";
+
+function add(a, b) {
+  let sum = a + b;
+  return sum;
+}
+
+function buildPlan(topic) {
+  let resp = await llm.chatAsync(topic);
+  return "plan => " + resp;
+}
+
+let r1 = add(3, 4);
+print("add: " + r1);
+let r2 = buildPlan("multi-step agent");
+print(r2);

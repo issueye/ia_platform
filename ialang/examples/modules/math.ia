@@ -1,0 +1,15 @@
+import { twice } from "./helper";
+
+export let base = 5;
+
+export function add(a, b) {
+  return a + b;
+}
+
+export function addTwice(a, b) {
+  return twice(a + b);
+}
+
+export async function plusOneAsync(x) {
+  return x + 1;
+}

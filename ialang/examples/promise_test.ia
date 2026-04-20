@@ -1,0 +1,31 @@
+import { all, race, allSettled } from "Promise";
+
+async function task1() {
+  return "result1";
+}
+
+async function task2() {
+  return "result2";
+}
+
+async function task3() {
+  return "result3";
+}
+
+let p1 = task1();
+let p2 = task2();
+let p3 = task3();
+print("=== Promise.all test ===");
+let allResults = await all([p1, p2, p3]);
+print("all => " + allResults);
+print("=== Promise.race test ===");
+let r1 = task1();
+let r2 = task2();
+let raceResult = await race([r1, r2]);
+print("race => " + raceResult);
+print("=== Promise.allSettled test ===");
+let s1 = task1();
+let s2 = task2();
+let settledResults = await allSettled([s1, s2]);
+print("allSettled => " + settledResults);
+print("=== Promise tests done ===");

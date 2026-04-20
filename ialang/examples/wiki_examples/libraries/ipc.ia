@@ -1,0 +1,16 @@
+import * as ipc from "ipc";
+import * as json from "json";
+
+function main() {
+  let server = ipc.server.listen({ addr: "127.0.0.1:0" });
+  let clientConn = ipc.client.connect(server.addr);
+  let peer = server.accept();
+  clientConn.send({ type: "ping" });
+  let req = peer.recv();
+  peer.send({ type: "pong", echo: req });
+  let resp = clientConn.recv();
+  print(json.stringify(resp, true));
+  clientConn.close();
+  peer.close();
+  server.close();
+}

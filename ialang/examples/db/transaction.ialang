@@ -1,0 +1,197 @@
+// 数据库事务和高级用法示例
+// 运行: ialang run examples/db/transaction.ialang
+
+import { db } from "db";
+
+print("=== Database Transaction & Advanced Usage ===\n");
+
+// 连接数据库
+const database = db.sqlite("./transaction_test.db");
+
+// 创建表
+db.exec(`
+    CREATE TABLE IF NOT EXISTS accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        balance REAL NOT NULL DEFAULT 0
+    )
+`);
+
+db.exec(`
+    CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_account INTEGER NOT NULL,
+        to_account INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (from_account) REFERENCES accounts(id),
+        FOREIGN KEY (to_account) REFERENCES accounts(id)
+    )
+`);
+
+print("Tables created\n");
+
+// 插入初始数据
+db.exec("INSERT INTO accounts (name, balance) VALUES (?, ?)", ["Alice", 1000]);
+db.exec("INSERT INTO accounts (name, balance) VALUES (?, ?)", ["Bob", 500]);
+
+print("Initial accounts created\n");
+
+// 查询账户
+function printAccounts() {
+    const accounts = db.query("SELECT * FROM accounts ORDER BY id");
+    print("Accounts:");
+    for (let i = 0; i < accounts.length; i++) {
+        const acc = accounts[i];
+        print("  " + acc.name + ": $" + acc.balance);
+    }
+    print("");
+}
+
+printAccounts();
+
+// 转账函数（使用事务）
+function transferMoney(fromId, toId, amount) {
+    print("Transferring $" + amount + " from account " + fromId + " to " + toId + "...");
+    
+    return db.transaction((tx) => {
+        try {
+            // 检查源账户余额
+            const fromAccounts = tx.query(
+                "SELECT * FROM accounts WHERE id = ?",
+                [fromId]
+            );
+            
+            if (fromAccounts.length === 0) {
+                print("  Error: Source account not found");
+                return false;
+            }
+            
+            if (fromAccounts[0].balance < amount) {
+                print("  Error: Insufficient funds");
+                return false;
+            }
+            
+            // 检查目标账户
+            const toAccounts = tx.query(
+                "SELECT * FROM accounts WHERE id = ?",
+                [toId]
+            );
+            
+            if (toAccounts.length === 0) {
+                print("  Error: Target account not found");
+                return false;
+            }
+            
+            // 扣款
+            tx.exec(
+                "UPDATE accounts SET balance = balance - ? WHERE id = ?",
+                [amount, fromId]
+            );
+            
+            // 收款
+            tx.exec(
+                "UPDATE accounts SET balance = balance + ? WHERE id = ?",
+                [amount, toId]
+            );
+            
+            // 记录交易
+            tx.exec(
+                "INSERT INTO transactions (from_account, to_account, amount) VALUES (?, ?, ?)",
+                [fromId, toId, amount]
+            );
+            
+            print("  Success!\n");
+            return true;
+        } catch (error) {
+            print("  Error: " + error + "\n");
+            return false;
+        }
+    });
+}
+
+// 测试转账
+transferMoney(1, 2, 200);
+printAccounts();
+
+transferMoney(1, 2, 1000); // 应该失败（余额不足）
+printAccounts();
+
+transferMoney(999, 1, 100); // 应该失败（账户不存在）
+printAccounts();
+
+// 批量插入（使用事务）
+print("Batch inserting products...\n");
+
+db.transaction((tx) => {
+    const products = [
+        ["Product A", 10.99, 100],
+        ["Product B", 20.99, 200],
+        ["Product C", 30.99, 300],
+        ["Product D", 40.99, 400],
+        ["Product E", 50.99, 500]
+    ];
+    
+    for (let i = 0; i < products.length; i++) {
+        const p = products[i];
+        tx.exec(
+            "INSERT INTO accounts (name, balance) VALUES (?, ?)",
+            [p[0], p[1]]
+        );
+    }
+    
+    print("Inserted " + products.length + " products\n");
+    return true;
+});
+
+// 预处理语句示例
+print("Using prepared statements...\n");
+
+const stmt = db.prepare("SELECT * FROM accounts WHERE balance > ?");
+
+const richAccounts = stmt.query([500]);
+print("Accounts with balance > 500:");
+for (let i = 0; i < richAccounts.length; i++) {
+    const acc = richAccounts[i];
+    print("  " + acc.name + ": $" + acc.balance);
+}
+print("");
+
+stmt.close();
+
+// 统计查询
+print("Statistics:\n");
+
+const totalAccounts = db.query("SELECT COUNT(*) as count FROM accounts");
+print("Total accounts: " + totalAccounts[0].count);
+
+const totalBalance = db.query("SELECT SUM(balance) as total FROM accounts");
+print("Total balance: $" + totalBalance[0].total);
+
+const avgBalance = db.query("SELECT AVG(balance) as avg FROM accounts");
+print("Average balance: $" + avgBalance[0].avg);
+
+const maxBalance = db.query("SELECT MAX(balance) as max FROM accounts");
+print("Maximum balance: $" + maxBalance[0].max);
+
+const minBalance = db.query("SELECT MIN(balance) as min FROM accounts");
+print("Minimum balance: $" + minBalance[0].min);
+
+print("");
+
+// 复杂查询
+print("Top 3 accounts by balance:\n");
+const topAccounts = db.query("SELECT * FROM accounts ORDER BY balance DESC LIMIT 3");
+for (let i = 0; i < topAccounts.length; i++) {
+    const acc = topAccounts[i];
+    print("  " + (i + 1) + ". " + acc.name + " - $" + acc.balance);
+}
+
+print("");
+
+// 关闭连接
+print("Closing connection...");
+db.close();
+print("Connection closed\n");
+
+print("=== Example Complete ===");

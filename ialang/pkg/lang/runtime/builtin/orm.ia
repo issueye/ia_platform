@@ -1,0 +1,427 @@
+// ialang ORM Framework
+// 类似 Sequelize/TypeORM 的 API 设计
+
+// ===== 工具函数 =====
+
+function camelize(str) {
+  return str.replace(/_([a-z])/g, function(match, letter) {
+    return letter.toUpperCase();
+  });
+}
+
+function underscore(str) {
+  return str.replace(/([A-Z])/g, function(match, letter) {
+    return "_" + letter.toLowerCase();
+  });
+}
+
+function pluralize(str) {
+  if (str.endsWith("y")) return str.slice(0, -1) + "ies";
+  if (str.endsWith("s")) return str + "es";
+  return str + "s";
+}
+
+function generateTableName(modelName) {
+  return pluralize(underscore(modelName));
+}
+
+// ===== 字段类型定义 =====
+
+export let DataTypes = {
+  INTEGER: "INTEGER",
+  BIGINT: "BIGINT",
+  FLOAT: "FLOAT",
+  DOUBLE: "DOUBLE",
+  DECIMAL: "DECIMAL",
+  STRING: "TEXT",
+  TEXT: "TEXT",
+  BOOLEAN: "INTEGER",
+  DATE: "TEXT",
+  DATETIME: "TEXT",
+  JSON: "TEXT",
+  BLOB: "BLOB",
+  
+  // 便捷方法
+  INT: "INTEGER",
+  VARCHAR: "TEXT",
+  CHAR: "TEXT",
+};
+
+// ===== Schema 定义 =====
+
+function defineField(name, type, options) {
+  let field = {
+    name: name,
+    type: type,
+    primaryKey: false,
+    autoIncrement: false,
+    notNull: false,
+    defaultValue: null,
+    unique: false,
+    references: null,
+  };
+  
+  if (options) {
+    if (options.primaryKey) field.primaryKey = true;
+    if (options.autoIncrement) field.autoIncrement = true;
+    if (options.notNull || options.primaryKey) field.notNull = true;
+    if (options.defaultValue != null) field.defaultValue = options.defaultValue;
+    if (options.unique) field.unique = true;
+    if (options.references) field.references = options.references;
+  }
+  
+  return field;
+}
+
+function definePrimaryKey(name, type) {
+  return defineField(name, type || DataTypes.INTEGER, {
+    primaryKey: true,
+    autoIncrement: true,
+  });
+}
+
+function defineForeignKey(name, references) {
+  return defineField(name, DataTypes.INTEGER, {
+    notNull: true,
+    references: references,
+  });
+}
+
+// ===== 模型定义 =====
+
+export function defineModel(name, fields, options) {
+  let modelName = name;
+  let tableName = options && options.tableName ? options.tableName : generateTableName(name);
+  
+  // 处理字段定义
+  let schemaFields = {};
+  let fieldList = [];
+  
+  // 默认添加 id 主键
+  if (!fields.id) {
+    fields.id = { primaryKey: true, autoIncrement: true };
+  }
+  
+  // 默认时间戳
+  if (!options || options.timestamps !== false) {
+    if (!fields.createdAt) {
+      fields.createdAt = { type: DataTypes.DATETIME };
+    }
+    if (!fields.updatedAt) {
+      fields.updatedAt = { type: DataTypes.DATETIME };
+    }
+  }
+  
+  // 处理字段
+  for (let fieldName in fields) {
+    let fieldDef = fields[fieldName];
+    let type = fieldDef.type || DataTypes.TEXT;
+    let opts = {};
+    
+    if (fieldDef.primaryKey) opts.primaryKey = true;
+    if (fieldDef.autoIncrement) opts.autoIncrement = true;
+    if (fieldDef.notNull) opts.notNull = true;
+    if (fieldDef.defaultValue != null) opts.defaultValue = fieldDef.defaultValue;
+    if (fieldDef.unique) opts.unique = true;
+    if (fieldDef.references) opts.references = fieldDef.references;
+    
+    schemaFields[fieldName] = defineField(fieldName, type, opts);
+    fieldList.push(schemaFields[fieldName]);
+  }
+  
+  // 创建模型对象
+  let model = {
+    name: modelName,
+    tableName: tableName,
+    fields: schemaFields,
+    fieldList: fieldList,
+    associations: [],
+    timestamps: !options || options.timestamps !== false,
+    
+    // 查询方法
+    findOne: function(conditions, queryOptions) { return null; },
+    findById: function(id) { return null; },
+    findAll: function(queryOptions) { return []; },
+    findAndCountAll: function(queryOptions) { return { rows: [], count: 0 }; },
+    count: function(conditions) { return 0; },
+    
+    // 写入方法
+    create: function(data) { return {}; },
+    update: function(data, conditions) { return 0; },
+    delete: function(conditions) { return 0; },
+    destroy: function(conditions) { return 0; },
+    
+    // 批量操作
+    bulkCreate: function(dataArray) { return []; },
+    bulkUpdate: function(data, conditions) { return 0; },
+    bulkDelete: function(conditions) { return 0; },
+    
+    // 关联方法
+    hasOne: function(targetModel, options) { return this; },
+    belongsTo: function(targetModel, options) { return this; },
+    hasMany: function(targetModel, options) { return this; },
+    belongsToMany: function(targetModel, options) { return this; },
+  };
+  
+  return model;
+}
+
+// ===== 查询构建器 =====
+
+export function QueryBuilder(model) {
+  let state = {
+    model: model,
+    conditions: {},
+    orderBy: [],
+    limitVal: null,
+    offsetVal: null,
+    include: [],
+  };
+  
+  return {
+    where: function(conditions) {
+      state.conditions = conditions;
+      return this;
+    },
+    
+    order: function(field, direction) {
+      state.orderBy.push({ field: field, direction: direction || "ASC" });
+      return this;
+    },
+    
+    limit: function(n) {
+      state.limitVal = n;
+      return this;
+    },
+    
+    offset: function(n) {
+      state.offsetVal = n;
+      return this;
+    },
+    
+    include: function(association) {
+      state.include.push(association);
+      return this;
+    },
+    
+    buildQuery: function() {
+      let sql = "SELECT * FROM " + model.tableName;
+      let params = [];
+      
+      // WHERE 子句
+      if (state.conditions && Object.keys(state.conditions).length > 0) {
+        let whereClauses = [];
+        for (let key in state.conditions) {
+          whereClauses.push(underscore(key) + " = ?");
+          params.push(state.conditions[key]);
+        }
+        sql = sql + " WHERE " + joinStrings(whereClauses, " AND ");
+      }
+      
+      // ORDER BY
+      if (state.orderBy.length > 0) {
+        let orderClauses = [];
+        let i = 0;
+        while (i < state.orderBy.length) {
+          orderClauses.push(underscore(state.orderBy[i].field) + " " + state.orderBy[i].direction);
+          i = i + 1;
+        }
+        sql = sql + " ORDER BY " + joinStrings(orderClauses, ", ");
+      }
+      
+      // LIMIT
+      if (state.limitVal != null) {
+        sql = sql + " LIMIT " + state.limitVal;
+      }
+      
+      // OFFSET
+      if (state.offsetVal != null) {
+        sql = sql + " OFFSET " + state.offsetVal;
+      }
+      
+      return { sql: sql, params: params };
+    },
+    
+    buildInsertQuery: function(data) {
+      let fields = [];
+      let values = [];
+      let placeholders = [];
+      
+      for (let key in data) {
+        fields.push(underscore(key));
+        values.push(data[key]);
+        placeholders.push("?");
+      }
+      
+      let sql = "INSERT INTO " + model.tableName + 
+                " (" + joinStrings(fields, ", ") + ") VALUES (" + 
+                joinStrings(placeholders, ", ") + ")";
+      
+      return { sql: sql, params: values };
+    },
+    
+    buildUpdateQuery: function(data, conditions) {
+      let setClauses = [];
+      let params = [];
+      
+      for (let key in data) {
+        setClauses.push(underscore(key) + " = ?");
+        params.push(data[key]);
+      }
+      
+      let sql = "UPDATE " + model.tableName + " SET " + joinStrings(setClauses, ", ");
+      
+      if (conditions && Object.keys(conditions).length > 0) {
+        let whereClauses = [];
+        for (let key in conditions) {
+          whereClauses.push(underscore(key) + " = ?");
+          params.push(conditions[key]);
+        }
+        sql = sql + " WHERE " + joinStrings(whereClauses, " AND ");
+      }
+      
+      return { sql: sql, params: params };
+    },
+    
+    buildDeleteQuery: function(conditions) {
+      let sql = "DELETE FROM " + model.tableName;
+      let params = [];
+      
+      if (conditions && Object.keys(conditions).length > 0) {
+        let whereClauses = [];
+        for (let key in conditions) {
+          whereClauses.push(underscore(key) + " = ?");
+          params.push(conditions[key]);
+        }
+        sql = sql + " WHERE " + joinStrings(whereClauses, " AND ");
+      }
+      
+      return { sql: sql, params: params };
+    },
+  };
+}
+
+// ===== 迁移工具 =====
+
+export function MigrationHelper(database) {
+  return {
+    createTable: function(model) {
+      let fields = [];
+      let i = 0;
+      while (i < model.fieldList.length) {
+        let field = model.fieldList[i];
+        let fieldDef = field.name + " " + field.type;
+        
+        if (field.primaryKey) {
+          fieldDef = fieldDef + " PRIMARY KEY";
+        }
+        if (field.autoIncrement) {
+          fieldDef = fieldDef + " AUTOINCREMENT";
+        }
+        if (field.notNull) {
+          fieldDef = fieldDef + " NOT NULL";
+        }
+        if (field.unique) {
+          fieldDef = fieldDef + " UNIQUE";
+        }
+        if (field.defaultValue != null) {
+          fieldDef = fieldDef + " DEFAULT " + field.defaultValue;
+        }
+        
+        fields.push(fieldDef);
+        i = i + 1;
+      }
+      
+      let sql = "CREATE TABLE IF NOT EXISTS " + model.tableName + 
+                " (" + joinStrings(fields, ", ") + ")";
+      
+      return database.exec(sql);
+    },
+    
+    dropTable: function(model) {
+      return database.exec("DROP TABLE IF EXISTS " + model.tableName);
+    },
+    
+    addColumn: function(model, field) {
+      let fieldDef = field.name + " " + field.type;
+      if (field.notNull) fieldDef = fieldDef + " NOT NULL";
+      if (field.defaultValue != null) fieldDef = fieldDef + " DEFAULT " + field.defaultValue;
+      
+      return database.exec("ALTER TABLE " + model.tableName + 
+                          " ADD COLUMN " + fieldDef);
+    },
+    
+    sync: function(model) {
+      return this.createTable(model);
+    },
+    
+    syncAll: function(models) {
+      let i = 0;
+      while (i < models.length) {
+        this.createTable(models[i]);
+        i = i + 1;
+      }
+      return true;
+    },
+  };
+}
+
+// ===== ORM 初始化 =====
+
+export function ORM(database) {
+  let models = {};
+  let migrations = MigrationHelper(database);
+  
+  return {
+    DataTypes: DataTypes,
+    define: defineModel,
+    migrations: migrations,
+    
+    register: function(model) {
+      models[model.name] = model;
+      return model;
+    },
+    
+    model: function(name) {
+      return models[name];
+    },
+    
+    allModels: function() {
+      return models;
+    },
+    
+    sync: function() {
+      let modelList = [];
+      for (let name in models) {
+        modelList.push(models[name]);
+      }
+      return migrations.syncAll(modelList);
+    },
+  };
+}
+
+export function buildQuery(qb) {
+  return qb.buildQuery();
+}
+
+// ===== 辅助函数 =====
+
+function joinStrings(arr, sep) {
+  if (arr.length == 0) return "";
+  let result = arr[0];
+  let i = 1;
+  while (i < arr.length) {
+    result = result + sep + arr[i];
+    i = i + 1;
+  }
+  return result;
+}
+
+export let orm = {
+  DataTypes: DataTypes,
+  defineModel: defineModel,
+  QueryBuilder: QueryBuilder,
+  MigrationHelper: MigrationHelper,
+  ORM: ORM,
+  buildQuery: buildQuery,
+};

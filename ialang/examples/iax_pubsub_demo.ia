@@ -1,0 +1,18 @@
+import { server, client } from "ipc";
+import { publish, subscribe } from "iax";
+import { stringify } from "json";
+
+let s = server.listen({addr: "127.0.0.1:0"});
+let acceptP = s.acceptAsync();
+let publisher = client.connect(s.addr);
+let subscriberConn = await acceptP;
+let sub = subscribe(subscriberConn, "orders.*");
+publish(publisher, "orders.created", {orderId: "A-300", amount: 88.5}, {"from": "order-service"});
+let evt = sub.next();
+print("event topic: " + evt.topic);
+print("event payload:");
+print(stringify(evt.payload, true));
+sub.close();
+publisher.close();
+subscriberConn.close();
+s.close();

@@ -1,0 +1,54 @@
+import { server, client } from "http";
+import { stringify } from "json";
+
+// Upstream service (static response).
+let upstream = server.serve({
+  addr: "127.0.0.1:0",
+  statusCode: 200,
+  body: "upstream-ok",
+  headers: {
+    "X-Upstream": "yes",
+  }
+});
+
+// Proxy service with request/response mutations.
+let proxy = server.proxy({
+  addr: "127.0.0.1:0",
+  target: "http://" + upstream.addr,
+  stripPrefix: "/api",
+  requestMutations: {
+    method: "GET",
+    path: "/internal/health",
+    setQuery: {
+      trace: "proxy-demo",
+    },
+    removeQuery: ["drop"],
+    setHeaders: {
+      "X-Proxy-Demo": "yes",
+    }
+  },
+  responseMutations: {
+    statusCode: 202,
+    setHeaders: {
+      "X-Proxy-Mode": "object",
+    },
+    body: "response rewritten by proxy",
+  }
+});
+
+print("upstream: http://" + upstream.addr);
+print("proxy:    http://" + proxy.addr);
+
+let result = client.request("http://" + proxy.addr + "/api/original?keep=1&drop=1", {
+  method: "GET",
+});
+
+print("statusCode: " + result.statusCode);
+print("status: " + result.status);
+print("headers:");
+print(stringify(result.headers, true));
+print("body:");
+print(result.body);
+
+proxy.close();
+upstream.close();

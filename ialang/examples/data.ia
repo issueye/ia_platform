@@ -1,0 +1,8 @@
+let arr = [1, 2, 3, 4];
+print("arr[0]: " + arr[0]);
+print("arr[3]: " + arr[3]);
+let user = {name: "alice", score: 10, city: "shanghai"};
+print("user.name: " + user.name);
+print("user city: " + user["city"]);
+let key = "score";
+print("user[key]: " + user[key]);

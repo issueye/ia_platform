@@ -1,0 +1,63 @@
+import { express } from "express";
+import { server, client } from "http";
+import { stringify } from "json";
+
+// Upstream service with route-specific behavior.
+let app = express();
+
+app["get"]("/upstream/original", (ctx) => {
+  ctx.json({
+    hit: "original",
+    path: ctx.path()
+  });
+});
+
+app["get"]("/upstream/healthz", (ctx) => {
+  ctx.json({
+    hit: "healthz",
+    path: ctx.path(),
+    trace: ctx.query("trace"),
+    proxyHeader: ctx.header("X-Proxy-Demo")
+  });
+});
+
+let upstream = app.listen("127.0.0.1:0");
+
+// Proxy rewrites route from /api/original -> /upstream/healthz
+let proxy = server.proxy({
+  addr: "127.0.0.1:0",
+  target: "http://" + upstream.addr,
+  stripPrefix: "/api",
+  requestMutations: {
+    path: "/upstream/healthz",
+    setQuery: {
+      trace: "route-rewritten"
+    },
+    setHeaders: {
+      "X-Proxy-Demo": "route-rewrite"
+    }
+  },
+  responseMutations: {
+    statusCode: 202,
+    setHeaders: {
+      "X-Route-Rewrite": "enabled"
+    }
+  }
+});
+
+print("upstream: http://" + upstream.addr);
+print("proxy:    http://" + proxy.addr);
+
+let result = client.request("http://" + proxy.addr + "/api/original", {
+  method: "GET"
+});
+
+print("statusCode: " + result.statusCode);
+print("status: " + result.status);
+print("headers:");
+print(stringify(result.headers, true));
+print("body:");
+print(result.body);
+
+proxy.close();
+upstream.close();

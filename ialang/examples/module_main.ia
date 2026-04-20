@@ -1,0 +1,9 @@
+import { add, base, addTwice, plusOneAsync } from "./modules/math";
+
+let v1 = add(base, 7);
+print("mod1: " + v1);
+let v2 = addTwice(2, 3);
+print("mod2: " + v2);
+let p = plusOneAsync(9);
+let v3 = await p;
+print("mod3: " + v3);

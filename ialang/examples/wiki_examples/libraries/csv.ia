@@ -1,0 +1,10 @@
+import * as csv from "csv";
+
+function main() {
+  let rows = csv.parse(`name,age
+alice,18
+bob,20
+`);
+  print(rows[1][0]);
+  print(csv.stringify([["id", "name"], ["1", "alice"]]));
+}

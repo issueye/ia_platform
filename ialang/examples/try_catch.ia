@@ -1,0 +1,51 @@
+function risky(x) {
+  if (x < 0) {
+    throw "negative: " + x;
+  }
+  return x;
+}
+
+try {
+  let a = risky(-3);
+  print("a: " + a);
+} catch (err) {
+  print("caught1: " + err);
+} finally {
+  print("finally1");
+}
+try {
+  print(not_exists);
+} catch (e) {
+  print("caught2: " + e);
+} finally {
+  print("finally2");
+}
+
+async function asyncRisk(n) {
+  if (n == 0) {
+    throw "zero";
+  }
+  return n + 1;
+}
+
+try {
+  let p = asyncRisk(0);
+  let v = await p;
+  print("v: " + v);
+} catch (ex) {
+  print("caught3: " + ex);
+} finally {
+  print("finally3");
+}
+let flag = 0;
+try {
+  try {
+    flag = 1;
+    throw "only-finally";
+  } finally {
+    flag = flag + 1;
+  }
+} catch (e4) {
+  print("caught4: " + e4);
+}
+print("flag: " + flag);

@@ -1,0 +1,12 @@
+import { add, mul } from "../shared/math_ops";
+import { label } from "../shared/format";
+
+export function calcAndDescribe(a, b) {
+  let sum = add(a, b);
+  let product = mul(a, b);
+  return label(sum, product);
+}
+
+export async function calcAndDescribeAsync(a, b) {
+  return calcAndDescribe(a, b);
+}

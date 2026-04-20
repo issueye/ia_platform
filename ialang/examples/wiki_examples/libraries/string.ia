@@ -1,0 +1,7 @@
+import * as strmod from "string";
+
+function main() {
+  let text = "  hello,ialang  ";
+  print(text.trim().toUpperCase());
+  print(strmod.split("a,b,c", ","));
+}

@@ -1,0 +1,8 @@
+import * as process from "process";
+
+function main() {
+  print(process.pid());
+  print(process.ppid());
+  print(process.cwd());
+  print(process.args());
+}

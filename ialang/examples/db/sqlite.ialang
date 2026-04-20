@@ -1,0 +1,140 @@
+// SQLite 数据库示例
+// 运行: ialang run examples/db/sqlite.ialang
+
+import { db } from "db";
+
+print("=== SQLite Database Example ===\n");
+
+// 连接到 SQLite 数据库（文件模式）
+const database = db.sqlite("./test.db");
+
+print("Connected to SQLite database\n");
+
+// 创建表
+print("Creating users table...");
+db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        age INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+`);
+print("Table created\n");
+
+// 插入数据
+print("Inserting users...");
+const result1 = db.exec(
+    "INSERT INTO users (name, email, age) VALUES (?, ?, ?)",
+    ["Alice", "alice@example.com", 25]
+);
+print("Inserted user 1, affected rows: " + result1.affectedRows);
+
+const result2 = db.exec(
+    "INSERT INTO users (name, email, age) VALUES (?, ?, ?)",
+    ["Bob", "bob@example.com", 30]
+);
+print("Inserted user 2, affected rows: " + result2.affectedRows);
+
+const result3 = db.exec(
+    "INSERT INTO users (name, email, age) VALUES (?, ?, ?)",
+    ["Charlie", "charlie@example.com", 35]
+);
+print("Inserted user 3, affected rows: " + result3.affectedRows);
+
+print("");
+
+// 查询所有用户
+print("Querying all users...");
+const users = db.query("SELECT * FROM users ORDER BY id");
+print("Found " + users.length + " users\n");
+
+// 遍历结果
+for (let i = 0; i < users.length; i++) {
+    const user = users[i];
+    print("User " + (i + 1) + ":");
+    print("  ID: " + user.id);
+    print("  Name: " + user.name);
+    print("  Email: " + user.email);
+    print("  Age: " + user.age);
+    print("  Created: " + user.created_at);
+    print("");
+}
+
+// 条件查询
+print("Querying users with age > 28...");
+const olderUsers = db.query("SELECT * FROM users WHERE age > ?", [28]);
+print("Found " + olderUsers.length + " users with age > 28\n");
+
+// 更新数据
+print("Updating Alice's age...");
+const updateResult = db.exec(
+    "UPDATE users SET age = ? WHERE name = ?",
+    [26, "Alice"]
+);
+print("Updated " + updateResult.affectedRows + " rows\n");
+
+// 查询单个用户
+print("Querying Alice...");
+const alice = db.query("SELECT * FROM users WHERE name = ?", ["Alice"]);
+if (alice.length > 0) {
+    print("Alice's new age: " + alice[0].age + "\n");
+}
+
+// 删除数据
+print("Deleting Charlie...");
+const deleteResult = db.exec(
+    "DELETE FROM users WHERE name = ?",
+    ["Charlie"]
+);
+print("Deleted " + deleteResult.affectedRows + " rows\n");
+
+// 统计
+print("Getting user count...");
+const countResult = db.query("SELECT COUNT(*) as total FROM users");
+print("Total users: " + countResult[0].total + "\n");
+
+// 使用事务
+print("Using transaction...");
+db.transaction((tx) => {
+    try {
+        tx.exec(
+            "INSERT INTO users (name, email, age) VALUES (?, ?, ?)",
+            ["David", "david@example.com", 40]
+        );
+        
+        tx.exec(
+            "INSERT INTO users (name, email, age) VALUES (?, ?, ?)",
+            ["Eve", "eve@example.com", 28]
+        );
+        
+        print("Transaction committed successfully\n");
+        return true; // 返回 true 表示提交
+    } catch (error) {
+        print("Transaction error: " + error);
+        return false; // 返回 false 表示回滚
+    }
+});
+
+// 查询最终结果
+print("Final user list...");
+const finalUsers = db.query("SELECT * FROM users ORDER BY id");
+for (let i = 0; i < finalUsers.length; i++) {
+    const user = finalUsers[i];
+    print("  " + user.name + " (" + user.email + ") - Age: " + user.age);
+}
+
+print("");
+
+// 测试连接
+print("Testing connection...");
+const isConnected = db.ping();
+print("Connection status: " + (isConnected ? "OK" : "FAILED") + "\n");
+
+// 关闭连接
+print("Closing connection...");
+db.close();
+print("Connection closed\n");
+
+print("=== Example Complete ===");

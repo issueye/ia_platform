@@ -1,0 +1,7 @@
+import * as signal from "signal";
+
+function main() {
+  let sub = signal.notify([signal.SIGINT]);
+  print("signal subscription ready");
+  sub.stop();
+}

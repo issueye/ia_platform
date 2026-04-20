@@ -1,0 +1,9 @@
+import * as path from "path";
+
+function main() {
+  let p = path.join("logs", "2026", "app.log");
+  print(p);
+  print(path.base(p));
+  print(path.ext(p));
+  print(path.dir(p));
+}

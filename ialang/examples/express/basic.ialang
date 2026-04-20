@@ -1,0 +1,149 @@
+// Express 框架示例 - 基本用法
+// 运行: ialang run examples/express/basic.ialang
+
+import { express, logger, recovery, cors } from "express";
+
+// 创建应用实例
+const app = express();
+
+// 使用中间件
+app.use(recovery());
+app.use(logger());
+app.use(cors());
+
+// 基本路由 - GET
+app.get("/", (ctx) => {
+    ctx.json({
+        message: "Hello, Express on ialang!",
+        version: "1.0.0"
+    });
+});
+
+// 带路径参数的路由
+app.get("/users/:id", (ctx) => {
+    const id = ctx.param("id");
+    ctx.json({
+        user_id: id,
+        name: "User " + id
+    });
+});
+
+// 带查询参数的路由
+app.get("/search", (ctx) => {
+    const query = ctx.query("q");
+    const page = ctx.query("page");
+    ctx.json({
+        query: query,
+        page: page,
+        results: []
+    });
+});
+
+// POST 路由 - 接收 JSON body
+app.post("/users", (ctx) => {
+    const body = ctx.body();
+    ctx.status(201).json({
+        message: "User created",
+        user: body
+    });
+});
+
+// PUT 路由
+app.put("/users/:id", (ctx) => {
+    const id = ctx.param("id");
+    const body = ctx.body();
+    ctx.json({
+        message: "User updated",
+        id: id,
+        user: body
+    });
+});
+
+// DELETE 路由
+app.delete("/users/:id", (ctx) => {
+    const id = ctx.param("id");
+    ctx.json({
+        message: "User deleted",
+        id: id
+    });
+});
+
+// 创建路由组
+const api = app.group("/api/v1");
+
+api.get("/users", (ctx) => {
+    ctx.json({
+        users: ["Alice", "Bob", "Charlie"]
+    });
+});
+
+api.post("/users", (ctx) => {
+    const body = ctx.body();
+    ctx.status(201).json({
+        message: "User created",
+        user: body
+    });
+});
+
+api.get("/users/:id", (ctx) => {
+    const id = ctx.param("id");
+    ctx.json({
+        id: id,
+        name: "User " + id,
+        email: "user" + id + "@example.com"
+    });
+});
+
+// 创建带中间件的路由组
+const admin = app.group("/admin");
+
+admin.get("/", (ctx) => {
+    ctx.json({
+        message: "Admin panel",
+        stats: {
+            users: 100,
+            posts: 500
+        }
+    });
+});
+
+// 发送文本响应
+app.get("/text", (ctx) => {
+    ctx.send("Hello World");
+});
+
+// 发送 HTML 响应
+app.get("/html", (ctx) => {
+    ctx.set("Content-Type", "text/html");
+    ctx.send("<h1>Hello HTML</h1>");
+});
+
+// 重定向
+app.get("/redirect", (ctx) => {
+    ctx.redirect("/");
+});
+
+// 设置 Cookie
+app.get("/cookie", (ctx) => {
+    ctx.cookie("session", "abc123");
+    ctx.json({
+        message: "Cookie set"
+    });
+});
+
+// 获取请求信息
+app.get("/info", (ctx) => {
+    ctx.json({
+        method: ctx.method(),
+        path: ctx.path(),
+        ip: ctx.ip(),
+        content_type: ctx.header("Content-Type")
+    });
+});
+
+// 启动服务器
+print("Starting Express server on http://127.0.0.1:3000");
+const server = app.listen("127.0.0.1:3000");
+
+print("Server running at " + server.addr);
+print("Press Ctrl+C to stop");

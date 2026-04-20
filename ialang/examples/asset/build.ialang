@@ -1,0 +1,606 @@
+// 生产环境构建示例
+// 运行: ialang run examples/asset/build.ialang
+
+import { asset } from "asset";
+import { fs } from "fs";
+import { path } from "path";
+
+print("=== Production Build Script ===\n");
+
+// 构建配置
+const BUILD_CONFIG = {
+    // 源目录
+    srcDir: "./src",
+    
+    // 输出目录
+    outputDir: "./dist",
+    
+    // 是否压缩
+    minify: true,
+    
+    // 是否添加哈希
+    hash: true,
+    
+    // 是否合并文件
+    concat: true,
+    
+    // 资源子目录
+    assetsDir: "assets",
+    
+    // 入口文件
+    entry: {
+        css: [
+            "./src/css/reset.css",
+            "./src/css/variables.css",
+            "./src/css/main.css",
+            "./src/css/components.css",
+            "./src/css/responsive.css"
+        ],
+        js: [
+            "./src/js/utils.js",
+            "./src/js/api.js",
+            "./src/js/app.js"
+        ]
+    }
+};
+
+// 构建函数
+function build() {
+    print("Build Configuration:");
+    print("  Source: " + BUILD_CONFIG.srcDir);
+    print("  Output: " + BUILD_CONFIG.outputDir);
+    print("  Minify: " + BUILD_CONFIG.minify);
+    print("  Hash: " + BUILD_CONFIG.hash);
+    print("  Concat: " + BUILD_CONFIG.concat);
+    print("");
+    
+    // 步骤 1: 创建源文件
+    print("Step 1: Creating source files...");
+    createSourceFiles();
+    print("");
+    
+    // 步骤 2: 清理输出目录
+    print("Step 2: Cleaning output directory...");
+    const cleanResult = asset.clean(BUILD_CONFIG.outputDir, "*");
+    print("  Removed " + cleanResult.count + " files");
+    print("");
+    
+    // 步骤 3: 打包 CSS
+    print("Step 3: Bundling CSS...");
+    const cssResult = asset.bundle(BUILD_CONFIG.outputDir + "/css", {
+        files: BUILD_CONFIG.entry.css,
+        minify: BUILD_CONFIG.minify,
+        hash: BUILD_CONFIG.hash,
+        concat: BUILD_CONFIG.concat
+    });
+    print("  Processed " + cssResult.count + " files");
+    
+    if (cssResult.manifest["__bundle__"]) {
+        print("  Bundle: " + cssResult.manifest["__bundle__"].output);
+        print("  Bundle size: " + Math.round(cssResult.manifest["__bundle__"].size) + " bytes");
+    }
+    print("");
+    
+    // 步骤 4: 打包 JS
+    print("Step 4: Bundling JS...");
+    const jsResult = asset.bundle(BUILD_CONFIG.outputDir + "/js", {
+        files: BUILD_CONFIG.entry.js,
+        minify: BUILD_CONFIG.minify,
+        hash: BUILD_CONFIG.hash,
+        concat: BUILD_CONFIG.concat
+    });
+    print("  Processed " + jsResult.count + " files");
+    
+    if (jsResult.manifest["__bundle__"]) {
+        print("  Bundle: " + jsResult.manifest["__bundle__"].output);
+        print("  Bundle size: " + Math.round(jsResult.manifest["__bundle__"].size) + " bytes");
+    }
+    print("");
+    
+    // 步骤 5: 复制静态资源
+    print("Step 5: Copying static assets...");
+    copyDirectory(BUILD_CONFIG.srcDir + "/images", BUILD_CONFIG.outputDir + "/images");
+    copyDirectory(BUILD_CONFIG.srcDir + "/fonts", BUILD_CONFIG.outputDir + "/fonts");
+    print("");
+    
+    // 步骤 6: 生成 HTML
+    print("Step 6: Generating HTML...");
+    generateHTML(cssResult, jsResult);
+    print("");
+    
+    // 步骤 7: 生成构建报告
+    print("Step 7: Generating build report...");
+    generateBuildReport(cssResult, jsResult);
+    print("");
+    
+    print("=== Build Complete ===\n");
+    print("Output directory: " + BUILD_CONFIG.outputDir);
+    print("\nFiles generated:");
+    listDirectory(BUILD_CONFIG.outputDir, "");
+}
+
+// 创建源文件
+function createSourceFiles() {
+    // CSS 文件
+    fs.writeFile("./src/css/reset.css", `
+/* CSS Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    color: #333;
+    background-color: #fff;
+}
+`);
+
+    fs.writeFile("./src/css/variables.css", `
+/* CSS Variables */
+:root {
+    --primary-color: #007bff;
+    --secondary-color: #6c757d;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --info-color: #17a2b8;
+    --light-color: #f8f9fa;
+    --dark-color: #343a40;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-base: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+}
+`);
+
+    fs.writeFile("./src/css/main.css", `
+/* Main Styles */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--spacing-lg);
+}
+
+.header {
+    background-color: var(--primary-color);
+    color: white;
+    padding: var(--spacing-xl);
+    text-align: center;
+}
+
+.header h1 {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-base);
+}
+
+.nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-base) var(--spacing-lg);
+    background-color: var(--light-color);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.nav ul {
+    display: flex;
+    list-style: none;
+    gap: var(--spacing-lg);
+}
+
+.nav a {
+    text-decoration: none;
+    color: var(--primary-color);
+    font-weight: 500;
+    transition: opacity 0.2s;
+}
+
+.nav a:hover {
+    opacity: 0.8;
+}
+`);
+
+    fs.writeFile("./src/css/components.css", `
+/* Component Styles */
+.card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: var(--spacing-lg);
+    margin: var(--spacing-base) 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.button {
+    display: inline-block;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.button:hover {
+    background-color: #0056b3;
+}
+
+.button-secondary {
+    background-color: var(--secondary-color);
+}
+
+.button-secondary:hover {
+    background-color: #545b62;
+}
+
+.input {
+    width: 100%;
+    padding: var(--spacing-sm) var(--spacing-base);
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: var(--font-size-base);
+    transition: border-color 0.2s;
+}
+
+.input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+`);
+
+    fs.writeFile("./src/css/responsive.css", `
+/* Responsive Styles */
+@media (max-width: 768px) {
+    .container {
+        padding: var(--spacing-base);
+    }
+    
+    .header h1 {
+        font-size: 2rem;
+    }
+    
+    .nav {
+        flex-direction: column;
+        gap: var(--spacing-base);
+    }
+    
+    .nav ul {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+    
+    .card {
+        padding: var(--spacing-base);
+    }
+}
+
+@media (max-width: 480px) {
+    html {
+        font-size: 14px;
+    }
+    
+    .header {
+        padding: var(--spacing-lg);
+    }
+    
+    .header h1 {
+        font-size: 1.75rem;
+    }
+}
+`);
+
+    print("  Created CSS files");
+
+    // JS 文件
+    fs.writeFile("./src/js/utils.js", `
+// Utility Functions
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+function throttle(func, limit) {
+    let inThrottle;
+    return function() {
+        const args = arguments;
+        const context = this;
+        if (!inThrottle) {
+            func.apply(context, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
+function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return \`\${year}-\${month}-\${day}\`;
+}
+
+function formatCurrency(amount) {
+    return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD"
+    }).format(amount);
+}
+
+export { debounce, throttle, formatDate, formatCurrency };
+`);
+
+    fs.writeFile("./src/js/api.js", `
+// API Helper
+const API_BASE_URL = "https://api.example.com";
+const API_TIMEOUT = 10000;
+
+async function request(endpoint, options = {}) {
+    const url = \`\${API_BASE_URL}/\${endpoint}\`;
+    
+    const config = {
+        ...options,
+        headers: {
+            "Content-Type": "application/json",
+            ...options.headers
+        },
+        timeout: API_TIMEOUT
+    };
+    
+    try {
+        const response = await fetch(url, config);
+        
+        if (!response.ok) {
+            throw new Error(\`HTTP error! status: \${response.status}\`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error("API request error:", error);
+        throw error;
+    }
+}
+
+async function get(endpoint) {
+    return request(endpoint, { method: "GET" });
+}
+
+async function post(endpoint, data) {
+    return request(endpoint, {
+        method: "POST",
+        body: JSON.stringify(data)
+    });
+}
+
+async function put(endpoint, data) {
+    return request(endpoint, {
+        method: "PUT",
+        body: JSON.stringify(data)
+    });
+}
+
+async function del(endpoint) {
+    return request(endpoint, { method: "DELETE" });
+}
+
+export { get, post, put, del };
+`);
+
+    fs.writeFile("./src/js/app.js", `
+// Main Application
+import { get, post } from "./api.js";
+import { debounce, formatDate } from "./utils.js";
+
+class App {
+    constructor() {
+        this.initialized = false;
+    }
+    
+    async init() {
+        console.log("Initializing application...");
+        
+        this.setupEventListeners();
+        await this.loadData();
+        
+        this.initialized = true;
+        console.log("Application initialized");
+    }
+    
+    setupEventListeners() {
+        document.addEventListener("DOMContentLoaded", () => {
+            console.log("DOM loaded");
+        });
+        
+        const buttons = document.querySelectorAll(".button");
+        buttons.forEach(button => {
+            button.addEventListener("click", this.handleButtonClick);
+        });
+        
+        const searchInput = document.querySelector("#search");
+        if (searchInput) {
+            searchInput.addEventListener("input", debounce(this.handleSearch, 300));
+        }
+    }
+    
+    async loadData() {
+        try {
+            const data = await get("data");
+            console.log("Data loaded:", data);
+            this.render(data);
+        } catch (error) {
+            console.error("Failed to load data:", error);
+        }
+    }
+    
+    handleButtonClick(event) {
+        console.log("Button clicked:", event.target.textContent);
+    }
+    
+    handleSearch(event) {
+        const query = event.target.value;
+        console.log("Searching for:", query);
+    }
+    
+    render(data) {
+        const container = document.querySelector("#content");
+        if (container && data) {
+            container.innerHTML = \`
+                <div class="card">
+                    <h2>Data</h2>
+                    <p>Loaded at: \${formatDate(new Date())}</p>
+                </div>
+            \`;
+        }
+    }
+}
+
+const app = new App();
+app.init().catch(console.error);
+
+export default app;
+`);
+
+    print("  Created JS files");
+
+    // 创建占位符目录
+    fs.writeFile("./src/images/.gitkeep", "");
+    fs.writeFile("./src/fonts/.gitkeep", "");
+    print("  Created placeholder directories");
+}
+
+// 复制目录
+function copyDirectory(src, dest) {
+    try {
+        // 创建目标目录
+        fs.writeFile(dest + "/.gitkeep", "");
+        print("  Copied: " + src + " -> " + dest);
+    } catch (error) {
+        print("  Warning: " + error);
+    }
+}
+
+// 生成 HTML
+function generateHTML(cssResult, jsResult) {
+    let html = \`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Production built application">
+    <title>My Application</title>
+\`;
+
+    // 添加 CSS bundle
+    if (cssResult.manifest["__bundle__"]) {
+        const cssFile = cssResult.manifest["__bundle__"].output;
+        html += '    <link rel="stylesheet" href="css/' + cssFile + '">\n';
+    }
+
+    html += \`</head>
+<body>
+    <div class="header">
+        <h1>Welcome to My Application</h1>
+        <p>Built with ialang Asset Bundler</p>
+    </div>
+    
+    <div class="nav">
+        <div class="logo">MyApp</div>
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/about">About</a></li>
+            <li><a href="/contact">Contact</a></li>
+        </ul>
+    </div>
+    
+    <div class="container">
+        <div id="content">
+            <div class="card">
+                <h2>Getting Started</h2>
+                <p>This application has been built with optimized and bundled assets.</p>
+                <button class="button">Get Started</button>
+                <button class="button button-secondary">Learn More</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <p>&copy; 2026 My Application. All rights reserved.</p>
+    </div>
+    
+\`;
+
+    // 添加 JS bundle
+    if (jsResult.manifest["__bundle__"]) {
+        const jsFile = jsResult.manifest["__bundle__"].output;
+        html += '    <script src="js/' + jsFile + '"><\\/script>\n';
+    }
+
+    html += \`</body>
+</html>\`;
+
+    fs.writeFile(BUILD_CONFIG.outputDir + "/index.html", html);
+    print("  Generated: index.html");
+}
+
+// 生成构建报告
+function generateBuildReport(cssResult, jsResult) {
+    const report = {
+        timestamp: new Date().toISOString(),
+        config: BUILD_CONFIG,
+        css: cssResult,
+        js: jsResult,
+        summary: {
+            totalFiles: cssResult.count + jsResult.count,
+            cssSize: cssResult.manifest["__bundle__"] ? cssResult.manifest["__bundle__"].size : 0,
+            jsSize: jsResult.manifest["__bundle__"] ? jsResult.manifest["__bundle__"].size : 0
+        }
+    };
+
+    const reportJson = JSON.stringify(report, null, 2);
+    fs.writeFile(BUILD_CONFIG.outputDir + "/build-report.json", reportJson);
+    print("  Generated: build-report.json");
+    
+    print("\nBuild Summary:");
+    print("  Total files: " + report.summary.totalFiles);
+    print("  CSS size: " + Math.round(report.summary.cssSize) + " bytes");
+    print("  JS size: " + Math.round(report.summary.jsSize) + " bytes");
+}
+
+// 列出目录
+function listDirectory(dir, prefix) {
+    // 简化版本，实际应该递归列出文件
+    print("  " + dir + "/");
+}
+
+// 执行构建
+try {
+    build();
+} catch (error) {
+    print("\nBuild failed: " + error);
+    print("Stack: " + error.stack);
+}

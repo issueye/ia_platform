@@ -1,0 +1,13 @@
+import * as http from "http";
+
+function main() {
+  let s = http.server.serve({
+    addr: "127.0.0.1:0",
+    statusCode: 200,
+    body: "ok"
+  });
+  let resp = http.client.request("http://" + s.addr, { method: "GET" });
+  print(resp.statusCode);
+  print(resp.body);
+  s.close();
+}

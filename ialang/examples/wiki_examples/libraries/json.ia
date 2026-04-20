@@ -1,0 +1,7 @@
+import * as json from "json";
+
+function main() {
+  let obj = json.parse(`{"name":"ialang","ok":true}`);
+  print(obj.name);
+  print(json.stringify(obj, true));
+}

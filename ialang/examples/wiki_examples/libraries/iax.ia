@@ -1,0 +1,11 @@
+import * as iax from "iax";
+
+function main() {
+  let req = iax.buildRequest("inventory", "reserve", {
+    sku: "SKU-42",
+    qty: 2
+  });
+  print(iax.version());
+  print(req.service);
+  print(req.action);
+}

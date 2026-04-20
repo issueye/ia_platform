@@ -1,0 +1,7 @@
+import * as regexp from "regexp";
+
+function main() {
+  let re = regexp.compile("(\\w+)-(\\d+)");
+  print(re.find("item-42"));
+  print(regexp.findAllSubmatch("(\\w+)-(\\d+)", "item-42 task-7"));
+}
