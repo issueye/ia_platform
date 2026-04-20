@@ -1,11 +1,14 @@
 package builtin
 
-import rttypes "ialang/pkg/lang/runtime/types"
+import (
+	common "iacommon/pkg/ialang/value"
+	rttypes "ialang/pkg/lang/runtime/types"
+)
 
-type Value = rttypes.Value
-type Object = rttypes.Object
-type Array = rttypes.Array
-type NativeFunction = rttypes.NativeFunction
+type Value = common.Value
+type Object = common.Object
+type Array = common.Array
+type NativeFunction = common.NativeFunction
 type UserFunction = rttypes.UserFunction
 type BoundMethod = rttypes.BoundMethod
 type AsyncRuntime = rttypes.AsyncRuntime

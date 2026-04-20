@@ -1,164 +1,108 @@
 package token
 
-type TokenType string
+import common "iacommon/pkg/ialang/token"
 
-type Token struct {
-	Type    TokenType
-	Literal string
-	Line    int
-	Column  int
-}
+type TokenType = common.TokenType
+
+type Token = common.Token
 
 const (
-	ILLEGAL TokenType = "ILLEGAL"
-	EOF     TokenType = "EOF"
-	COMMENT TokenType = "COMMENT"
+	ILLEGAL = common.ILLEGAL
+	EOF     = common.EOF
+	COMMENT = common.COMMENT
 
-	IDENT    TokenType = "IDENT"
-	NUMBER   TokenType = "NUMBER"
-	STRING   TokenType = "STRING"
-	TEMPLATE TokenType = "TEMPLATE"
-	PRIVATE  TokenType = "PRIVATE"
+	IDENT    = common.IDENT
+	NUMBER   = common.NUMBER
+	STRING   = common.STRING
+	TEMPLATE = common.TEMPLATE
+	PRIVATE  = common.PRIVATE
 
-	ASSIGN     TokenType = "="
-	BANG       TokenType = "!"
-	EQ         TokenType = "=="
-	NEQ        TokenType = "!="
-	AND        TokenType = "&&"
-	OR         TokenType = "||"
-	NULLISH    TokenType = "??"
-	PLUS       TokenType = "+"
-	MINUS      TokenType = "-"
-	ASTERISK   TokenType = "*"
-	SLASH      TokenType = "/"
-	MODULO     TokenType = "%"
-	LT         TokenType = "<"
-	GT         TokenType = ">"
-	LTE        TokenType = "<="
-	GTE        TokenType = ">="
-	BITAND     TokenType = "&"
-	BITOR      TokenType = "|"
-	BITXOR     TokenType = "^"
-	SHL        TokenType = "<<"
-	SHR        TokenType = ">>"
-	COMMA      TokenType = ","
-	COLON      TokenType = ":"
-	DOT        TokenType = "."
-	SEMICOLON  TokenType = ";"
-	QUESTION   TokenType = "?"
-	OPTCHAIN   TokenType = "?."
-	SPREAD     TokenType = "..."
-	PLUSEQ     TokenType = "+="
-	MINUSEQ    TokenType = "-="
-	MULTEQ     TokenType = "*="
-	DIVEQ      TokenType = "/="
-	MODEQ      TokenType = "%="
-	PLUSPLUS   TokenType = "++"
-	MINUSMINUS TokenType = "--"
-	ARROW      TokenType = "=>"
-	LPAREN     TokenType = "("
-	RPAREN     TokenType = ")"
-	LBRACE     TokenType = "{"
-	RBRACE     TokenType = "}"
-	LBRACKET   TokenType = "["
-	RBRACKET   TokenType = "]"
+	ASSIGN     = common.ASSIGN
+	BANG       = common.BANG
+	EQ         = common.EQ
+	NEQ        = common.NEQ
+	AND        = common.AND
+	OR         = common.OR
+	NULLISH    = common.NULLISH
+	PLUS       = common.PLUS
+	MINUS      = common.MINUS
+	ASTERISK   = common.ASTERISK
+	SLASH      = common.SLASH
+	MODULO     = common.MODULO
+	LT         = common.LT
+	GT         = common.GT
+	LTE        = common.LTE
+	GTE        = common.GTE
+	BITAND     = common.BITAND
+	BITOR      = common.BITOR
+	BITXOR     = common.BITXOR
+	SHL        = common.SHL
+	SHR        = common.SHR
+	COMMA      = common.COMMA
+	COLON      = common.COLON
+	DOT        = common.DOT
+	SEMICOLON  = common.SEMICOLON
+	QUESTION   = common.QUESTION
+	OPTCHAIN   = common.OPTCHAIN
+	SPREAD     = common.SPREAD
+	PLUSEQ     = common.PLUSEQ
+	MINUSEQ    = common.MINUSEQ
+	MULTEQ     = common.MULTEQ
+	DIVEQ      = common.DIVEQ
+	MODEQ      = common.MODEQ
+	PLUSPLUS   = common.PLUSPLUS
+	MINUSMINUS = common.MINUSMINUS
+	ARROW      = common.ARROW
+	LPAREN     = common.LPAREN
+	RPAREN     = common.RPAREN
+	LBRACE     = common.LBRACE
+	RBRACE     = common.RBRACE
+	LBRACKET   = common.LBRACKET
+	RBRACKET   = common.RBRACKET
 
-	IMPORT   TokenType = "IMPORT"
-	EXPORT   TokenType = "EXPORT"
-	FROM     TokenType = "FROM"
-	CLASS    TokenType = "CLASS"
-	NEW      TokenType = "NEW"
-	THIS     TokenType = "THIS"
-	SUPER    TokenType = "SUPER"
-	EXTENDS  TokenType = "EXTENDS"
-	LET      TokenType = "LET"
-	AWAIT    TokenType = "AWAIT"
-	ASYNC    TokenType = "ASYNC"
-	FUNC     TokenType = "FUNCTION"
-	RETURN   TokenType = "RETURN"
-	THROW    TokenType = "THROW"
-	IF       TokenType = "IF"
-	ELSE     TokenType = "ELSE"
-	WHILE    TokenType = "WHILE"
-	FOR      TokenType = "FOR"
-	IN       TokenType = "IN"
-	OF       TokenType = "OF"
-	BREAK    TokenType = "BREAK"
-	CONTINUE TokenType = "CONTINUE"
-	TRY      TokenType = "TRY"
-	CATCH    TokenType = "CATCH"
-	FINALLY  TokenType = "FINALLY"
-	DO       TokenType = "DO"
-	TRUE     TokenType = "TRUE"
-	FALSE    TokenType = "FALSE"
-	NULL     TokenType = "NULL"
-	SWITCH   TokenType = "SWITCH"
-	CASE     TokenType = "CASE"
-	DEFAULT  TokenType = "DEFAULT"
-	TYPEOF   TokenType = "TYPEOF"
-	VOID     TokenType = "VOID"
-	STATIC   TokenType = "STATIC"
-	GET      TokenType = "GET"
-	SET      TokenType = "SET"
+	IMPORT   = common.IMPORT
+	EXPORT   = common.EXPORT
+	FROM     = common.FROM
+	CLASS    = common.CLASS
+	NEW      = common.NEW
+	THIS     = common.THIS
+	SUPER    = common.SUPER
+	EXTENDS  = common.EXTENDS
+	LET      = common.LET
+	AWAIT    = common.AWAIT
+	ASYNC    = common.ASYNC
+	FUNC     = common.FUNC
+	RETURN   = common.RETURN
+	THROW    = common.THROW
+	IF       = common.IF
+	ELSE     = common.ELSE
+	WHILE    = common.WHILE
+	FOR      = common.FOR
+	IN       = common.IN
+	OF       = common.OF
+	BREAK    = common.BREAK
+	CONTINUE = common.CONTINUE
+	TRY      = common.TRY
+	CATCH    = common.CATCH
+	FINALLY  = common.FINALLY
+	DO       = common.DO
+	TRUE     = common.TRUE
+	FALSE    = common.FALSE
+	NULL     = common.NULL
+	SWITCH   = common.SWITCH
+	CASE     = common.CASE
+	DEFAULT  = common.DEFAULT
+	TYPEOF   = common.TYPEOF
+	VOID     = common.VOID
+	STATIC   = common.STATIC
+	GET      = common.GET
+	SET      = common.SET
 )
 
-var keywords = map[string]TokenType{
-	"import":   IMPORT,
-	"export":   EXPORT,
-	"from":     FROM,
-	"class":    CLASS,
-	"new":      NEW,
-	"this":     THIS,
-	"super":    SUPER,
-	"extends":  EXTENDS,
-	"let":      LET,
-	"await":    AWAIT,
-	"async":    ASYNC,
-	"function": FUNC,
-	"return":   RETURN,
-	"throw":    THROW,
-	"if":       IF,
-	"else":     ELSE,
-	"while":    WHILE,
-	"for":      FOR,
-	"in":       IN,
-	"of":       OF,
-	"break":    BREAK,
-	"continue": CONTINUE,
-	"try":      TRY,
-	"catch":    CATCH,
-	"finally":  FINALLY,
-	"do":       DO,
-	"true":     TRUE,
-	"false":    FALSE,
-	"null":     NULL,
-	"switch":   SWITCH,
-	"case":     CASE,
-	"default":  DEFAULT,
-	"typeof":   TYPEOF,
-	"void":     VOID,
-	"static":   STATIC,
-	"get":      GET,
-	"set":      SET,
-}
-
 func LookupIdent(ident string) TokenType {
-	if tok, ok := keywords[ident]; ok {
-		return tok
-	}
-	return IDENT
+	return common.LookupIdent(ident)
 }
 
 func IsKeyword(tok TokenType) bool {
-	_, ok := keywordsReverse[tok]
-	return ok
-}
-
-var keywordsReverse map[TokenType]string
-
-func init() {
-	keywordsReverse = make(map[TokenType]string, len(keywords))
-	for k, v := range keywords {
-		keywordsReverse[v] = k
-	}
+	return common.IsKeyword(tok)
 }

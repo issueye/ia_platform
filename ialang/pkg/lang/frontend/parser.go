@@ -2,8 +2,8 @@ package frontend
 
 import (
 	"fmt"
-	"ialang/pkg/lang/ast"
-	"ialang/pkg/lang/token"
+	"iacommon/pkg/ialang/ast"
+	"iacommon/pkg/ialang/token"
 	"strings"
 )
 

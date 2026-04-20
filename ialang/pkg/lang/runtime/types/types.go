@@ -1,12 +1,15 @@
 package types
 
-import "context"
+import (
+	"context"
+	common "iacommon/pkg/ialang/value"
+)
 
-type Value any
-type Object map[string]Value
-type Array []Value
+type Value = common.Value
+type Object = common.Object
+type Array = common.Array
 
-type NativeFunction func(args []Value) (Value, error)
+type NativeFunction = common.NativeFunction
 
 type Awaitable interface {
 	Await() (Value, error)

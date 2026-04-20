@@ -1,6 +1,6 @@
 package frontend
 
-import tok "ialang/pkg/lang/token"
+import tok "iacommon/pkg/ialang/token"
 
 type TokenType = tok.TokenType
 type Token = tok.Token

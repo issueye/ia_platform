@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	astpkg "iacommon/pkg/ialang/ast"
+	tok "iacommon/pkg/ialang/token"
 	"ialang/pkg/lang"
-	astpkg "ialang/pkg/lang/ast"
-	tok "ialang/pkg/lang/token"
 )
 
 // Operator precedence levels (must match parser.go)
@@ -142,7 +142,7 @@ func formatFile(path string, stdout, stderr io.Writer) error {
 
 func formatDirectory(dir string, stdout, stderr io.Writer) error {
 	var files []string
-	
+
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -159,21 +159,21 @@ func formatDirectory(dir string, stdout, stderr io.Writer) error {
 		}
 		return nil
 	})
-	
+
 	if err != nil {
 		return fmt.Errorf("error scanning directory: %w", err)
 	}
-	
+
 	if len(files) == 0 {
 		fmt.Fprintf(stdout, "no .ia files found in %s\n", dir)
 		return nil
 	}
-	
+
 	fmt.Fprintf(stdout, "found %d .ia file(s) in %s\n\n", len(files), dir)
-	
+
 	formattedCount := 0
 	errorCount := 0
-	
+
 	for _, file := range files {
 		err := formatFile(file, stdout, stderr)
 		if err != nil {
@@ -183,13 +183,13 @@ func formatDirectory(dir string, stdout, stderr io.Writer) error {
 			formattedCount++
 		}
 	}
-	
+
 	fmt.Fprintf(stdout, "\nsummary: %d formatted, %d errors, %d total\n", formattedCount, errorCount, len(files))
-	
+
 	if errorCount > 0 {
 		return fmt.Errorf("some files failed to format")
 	}
-	
+
 	return nil
 }
 
@@ -204,7 +204,7 @@ func formatProgramSource(program *astpkg.Program) string {
 		return ""
 	}
 	f := &sourceFormatter{}
-	
+
 	for i, stmt := range program.Statements {
 		// Write leading comments
 		for _, comment := range stmt.GetLeadingComments() {
@@ -212,9 +212,9 @@ func formatProgramSource(program *astpkg.Program) string {
 			f.b.WriteString(comment.Text)
 			f.b.WriteByte('\n')
 		}
-		
+
 		f.writeStatement(stmt)
-		
+
 		// Add newline between statements
 		if i < len(program.Statements)-1 {
 			f.b.WriteByte('\n')
@@ -464,7 +464,7 @@ func (f *sourceFormatter) writeBlock(block *astpkg.BlockStatement) {
 			f.b.WriteString(comment.Text)
 			f.b.WriteByte('\n')
 		}
-		
+
 		f.writeIndent()
 		f.writeStatement(stmt)
 		if i < len(block.Statements)-1 {

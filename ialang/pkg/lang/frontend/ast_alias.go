@@ -1,6 +1,6 @@
 package frontend
 
-import astpkg "ialang/pkg/lang/ast"
+import astpkg "iacommon/pkg/ialang/ast"
 
 type Node = astpkg.Node
 type Statement = astpkg.Statement

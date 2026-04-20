@@ -1,6 +1,6 @@
 package compiler
 
-import astpkg "ialang/pkg/lang/ast"
+import astpkg "iacommon/pkg/ialang/ast"
 
 type Node = astpkg.Node
 type Program = astpkg.Program
