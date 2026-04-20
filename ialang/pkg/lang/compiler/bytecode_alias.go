@@ -1,6 +1,6 @@
 package compiler
 
-import bc "ialang/pkg/lang/bytecode"
+import bc "iacommon/pkg/ialang/bytecode"
 
 type Chunk = bc.Chunk
 type FunctionTemplate = bc.FunctionTemplate

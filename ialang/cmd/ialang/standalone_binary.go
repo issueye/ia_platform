@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"ialang/pkg/lang/packagefile"
+	"iacommon/pkg/ialang/packagefile"
 )
 
 var embeddedPackageMagic = []byte("IALANG_EMBEDDED_PKG_V1")

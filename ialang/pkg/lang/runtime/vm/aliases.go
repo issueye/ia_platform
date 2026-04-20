@@ -1,7 +1,7 @@
 package vm
 
 import (
-	bc "ialang/pkg/lang/bytecode"
+	bc "iacommon/pkg/ialang/bytecode"
 	rt "ialang/pkg/lang/runtime"
 )
 

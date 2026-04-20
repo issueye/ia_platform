@@ -1,6 +1,6 @@
 package runtime
 
-import bc "ialang/pkg/lang/bytecode"
+import bc "iacommon/pkg/ialang/bytecode"
 
 type OpCode = bc.OpCode
 type Instruction = bc.Instruction

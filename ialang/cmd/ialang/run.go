@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	bc "iacommon/pkg/ialang/bytecode"
 	"ialang/pkg/lang"
-	bc "ialang/pkg/lang/bytecode"
 	rtbuiltin "ialang/pkg/lang/runtime/builtin"
 	"ialang/pkg/pool"
 )

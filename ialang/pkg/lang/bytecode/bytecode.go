@@ -1,116 +1,86 @@
 package bytecode
 
-type OpCode uint8
+import common "iacommon/pkg/ialang/bytecode"
 
-const (
-	OpConstant OpCode = iota
-	OpAdd
-	OpSub
-	OpMul
-	OpDiv
-	OpMod
-	OpNeg
-	OpNot
-	OpAnd
-	OpOr
-	OpBitAnd
-	OpBitOr
-	OpBitXor
-	OpShl
-	OpShr
-	OpTruthy
-	OpDup
-	OpEqual
-	OpNotEqual
-	OpGreater
-	OpLess
-	OpGreaterEqual
-	OpLessEqual
-	OpPop
-	OpGetName
-	OpDefineName
-	OpSetName
-	OpClosure
-	OpClass
-	OpSetProperty
-	OpNew
-	OpGetGlobal
-	OpDefineGlobal
-	OpArray
-	OpObject
-	OpGetProperty
-	OpIndex
-	OpCall
-	OpSpreadArray
-	OpSpreadObject
-	OpSpreadCall
-	OpAwait
-	OpPushTry
-	OpPopTry
-	OpThrow
-	OpJumpIfFalse
-	OpJumpIfTrue
-	OpJumpIfNullish
-	OpJumpIfNotNullish
-	OpJump
-	OpImportName
-	OpImportNamespace
-	OpImportDynamic
-	OpExportName
-	OpExportAs
-	OpExportDefault
-	OpExportAll
-	OpSuper
-	OpSuperCall
-	OpTypeof
-	OpObjectKeys
-	OpReturn
-)
+type OpCode = common.OpCode
 
-type Instruction struct {
-	Op OpCode
-	A  int
-	B  int
-}
+type Instruction = common.Instruction
 
-type Chunk struct {
-	Code      []Instruction
-	Constants []any
-}
+type Chunk = common.Chunk
 
 // FunctionTemplate is the compile-time function constant stored in bytecode.
 // Runtime binds lexical env when OpClosure is executed.
-type FunctionTemplate struct {
-	Name          string
-	Params        []string
-	RestParam     string
-	ParamDefaults []any // compiled default value constants (nil for params without defaults)
-	Async         bool
-	Chunk         *Chunk
-}
+type FunctionTemplate = common.FunctionTemplate
+
+const (
+	OpConstant = common.OpConstant
+	OpAdd = common.OpAdd
+	OpSub = common.OpSub
+	OpMul = common.OpMul
+	OpDiv = common.OpDiv
+	OpMod = common.OpMod
+	OpNeg = common.OpNeg
+	OpNot = common.OpNot
+	OpAnd = common.OpAnd
+	OpOr = common.OpOr
+	OpBitAnd = common.OpBitAnd
+	OpBitOr = common.OpBitOr
+	OpBitXor = common.OpBitXor
+	OpShl = common.OpShl
+	OpShr = common.OpShr
+	OpTruthy = common.OpTruthy
+	OpDup = common.OpDup
+	OpEqual = common.OpEqual
+	OpNotEqual = common.OpNotEqual
+	OpGreater = common.OpGreater
+	OpLess = common.OpLess
+	OpGreaterEqual = common.OpGreaterEqual
+	OpLessEqual = common.OpLessEqual
+	OpPop = common.OpPop
+	OpGetName = common.OpGetName
+	OpDefineName = common.OpDefineName
+	OpSetName = common.OpSetName
+	OpClosure = common.OpClosure
+	OpClass = common.OpClass
+	OpSetProperty = common.OpSetProperty
+	OpNew = common.OpNew
+	OpGetGlobal = common.OpGetGlobal
+	OpDefineGlobal = common.OpDefineGlobal
+	OpArray = common.OpArray
+	OpObject = common.OpObject
+	OpGetProperty = common.OpGetProperty
+	OpIndex = common.OpIndex
+	OpCall = common.OpCall
+	OpSpreadArray = common.OpSpreadArray
+	OpSpreadObject = common.OpSpreadObject
+	OpSpreadCall = common.OpSpreadCall
+	OpAwait = common.OpAwait
+	OpPushTry = common.OpPushTry
+	OpPopTry = common.OpPopTry
+	OpThrow = common.OpThrow
+	OpJumpIfFalse = common.OpJumpIfFalse
+	OpJumpIfTrue = common.OpJumpIfTrue
+	OpJumpIfNullish = common.OpJumpIfNullish
+	OpJumpIfNotNullish = common.OpJumpIfNotNullish
+	OpJump = common.OpJump
+	OpImportName = common.OpImportName
+	OpImportNamespace = common.OpImportNamespace
+	OpImportDynamic = common.OpImportDynamic
+	OpExportName = common.OpExportName
+	OpExportAs = common.OpExportAs
+	OpExportDefault = common.OpExportDefault
+	OpExportAll = common.OpExportAll
+	OpSuper = common.OpSuper
+	OpSuperCall = common.OpSuperCall
+	OpTypeof = common.OpTypeof
+	OpObjectKeys = common.OpObjectKeys
+	OpReturn = common.OpReturn
+)
 
 func NewChunk() *Chunk {
-	return &Chunk{}
+	return common.NewChunk()
 }
 
 func NewChunkSized(codeCap, constCap int) *Chunk {
-	if codeCap < 0 {
-		codeCap = 0
-	}
-	if constCap < 0 {
-		constCap = 0
-	}
-	return &Chunk{
-		Code:      make([]Instruction, 0, codeCap),
-		Constants: make([]any, 0, constCap),
-	}
-}
-
-func (c *Chunk) AddConstant(v any) int {
-	c.Constants = append(c.Constants, v)
-	return len(c.Constants) - 1
-}
-
-func (c *Chunk) Emit(op OpCode, a, b int) {
-	c.Code = append(c.Code, Instruction{Op: op, A: a, B: b})
+	return common.NewChunkSized(codeCap, constCap)
 }

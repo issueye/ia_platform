@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
+	bc "iacommon/pkg/ialang/bytecode"
+	"iacommon/pkg/ialang/packagefile"
 	"ialang/pkg/lang"
-	bc "ialang/pkg/lang/bytecode"
-	"ialang/pkg/lang/packagefile"
 	rtbuiltin "ialang/pkg/lang/runtime/builtin"
 	"ialang/pkg/pool"
 )

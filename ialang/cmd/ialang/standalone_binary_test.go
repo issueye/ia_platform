@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"ialang/pkg/lang/packagefile"
+	"iacommon/pkg/ialang/packagefile"
 )
 
 func TestAppendAndExtractEmbeddedPackagePayload(t *testing.T) {

@@ -6,8 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	bc "ialang/pkg/lang/bytecode"
-	rttypes "ialang/pkg/lang/runtime/types"
+	bc "iacommon/pkg/ialang/bytecode"
 )
 
 func TestSerializeDeserializeRoundTrip(t *testing.T) {
@@ -176,20 +175,6 @@ func TestSerializeFunctionTemplateNilChunk(t *testing.T) {
 	}
 }
 
-func TestSerializeUserFunctionUnsupported(t *testing.T) {
-	chunk := &bc.Chunk{
-		Code: []bc.Instruction{
-			{Op: bc.OpConstant, A: 0, B: 0},
-			{Op: bc.OpReturn, A: 0, B: 0},
-		},
-		Constants: []any{&rttypes.UserFunction{Name: "f", Chunk: &bc.Chunk{}}},
-	}
-	_, err := Serialize(chunk)
-	if err == nil {
-		t.Fatal("expected unsupported user function error")
-	}
-}
-
 func TestSerializeUnsupportedType(t *testing.T) {
 	chunk := &bc.Chunk{
 		Code: []bc.Instruction{
@@ -201,5 +186,47 @@ func TestSerializeUnsupportedType(t *testing.T) {
 	_, err := Serialize(chunk)
 	if err == nil {
 		t.Fatal("expected unsupported type error")
+	}
+}
+
+func TestDeserializeNilEncodedChunk(t *testing.T) {
+	_, err := decodeChunk(nil)
+	if err == nil {
+		t.Fatal("expected nil chunk error")
+	}
+}
+
+func TestDeserializeUnsupportedTypeTag(t *testing.T) {
+	_, err := decodeConstant(serialConstant{Type: "bogus"})
+	if err == nil {
+		t.Fatal("expected unsupported type tag error")
+	}
+}
+
+func TestDeserializeBoolEmptyPayload(t *testing.T) {
+	_, err := decodeConstant(serialConstant{Type: "bool"})
+	if err == nil {
+		t.Fatal("expected empty bool payload error")
+	}
+}
+
+func TestDeserializeFunctionEmptyPayload(t *testing.T) {
+	_, err := decodeConstant(serialConstant{Type: "function"})
+	if err == nil {
+		t.Fatal("expected empty function payload error")
+	}
+}
+
+func TestDeserializeInvalidInstructionOp(t *testing.T) {
+	encoded := &serialChunk{
+		Code: []serialInstruction{{Op: 255, A: 0, B: 0}},
+		Constants: []serialConstant{{Type: "nil"}},
+	}
+	got, err := decodeChunk(encoded)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Code[0].Op != bc.OpCode(255) {
+		t.Fatalf("unexpected opcode: %v", got.Code[0].Op)
 	}
 }

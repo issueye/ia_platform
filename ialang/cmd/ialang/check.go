@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	bc "ialang/pkg/lang/bytecode"
+	bc "iacommon/pkg/ialang/bytecode"
 	"ialang/pkg/lang"
 )
 
