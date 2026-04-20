@@ -7,7 +7,9 @@
       "Bash(go work sync:*)",
       "Bash(go env:*)",
       "Bash(go test:*)",
-      "Bash(go list:*)"
+      "Bash(go list:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs"
     ]
   }
 }
