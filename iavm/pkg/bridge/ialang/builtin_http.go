@@ -3,12 +3,12 @@ package ialang
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	hostapi "iacommon/pkg/host/api"
+	moduleapi "iacommon/pkg/ialang/module"
 )
 
-const PlatformHTTPModuleName = "@platform/http"
+const PlatformHTTPModuleName = moduleapi.PlatformHTTPModuleName
 
 var ErrInvalidHTTPResult = errors.New("invalid http result")
 
@@ -51,11 +51,11 @@ func buildPlatformHTTPModule(bridge *PlatformHTTPBridge) map[string]any {
 		"post":    HTTPPostFunc(bridge.Post),
 	}
 
-	namespace := map[string]any{
+	httpNamespace := map[string]any{
 		"client": clientNamespace,
 	}
-	module := cloneModuleMap(namespace)
-	module["http"] = namespace
+	module := cloneModuleMap(clientNamespace)
+	module["http"] = httpNamespace
 	return module
 }
 
@@ -81,19 +81,19 @@ func (b *PlatformHTTPBridge) Request(rawURL string, options ...map[string]any) (
 }
 
 func (b *PlatformHTTPBridge) Get(rawURL string, options ...map[string]any) (map[string]any, error) {
-	requestOptions := cloneOptionalOptions(options)
+	requestOptions := mergeHTTPOptions(options...)
 	requestOptions["method"] = "GET"
 	return b.Request(rawURL, requestOptions)
 }
 
 func (b *PlatformHTTPBridge) Post(rawURL string, options ...map[string]any) (map[string]any, error) {
-	requestOptions := cloneOptionalOptions(options)
+	requestOptions := mergeHTTPOptions(options...)
 	requestOptions["method"] = "POST"
 	return b.Request(rawURL, requestOptions)
 }
 
 func (b *PlatformHTTPBridge) call(operation string, args map[string]any) (map[string]any, error) {
-	if b == nil || b.Host == nil {
+	if b.Host == nil {
 		return nil, ErrHostNotConfigured
 	}
 	if b.CapabilityID == "" {
@@ -108,45 +108,13 @@ func (b *PlatformHTTPBridge) call(operation string, args map[string]any) (map[st
 	if err != nil {
 		return nil, err
 	}
+	if result.Value == nil {
+		return map[string]any{}, nil
+	}
 	return result.Value, nil
 }
 
-func normalizeHTTPResult(result map[string]any) (map[string]any, error) {
-	statusValue, ok := result["status"]
-	if !ok {
-		return nil, fmt.Errorf("%w: missing status", ErrInvalidHTTPResult)
-	}
-	status, err := bridgeInt(statusValue)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidHTTPResult, err)
-	}
-
-	headers, err := bridgeStringMap(result["headers"])
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidHTTPResult, err)
-	}
-	body, err := bridgeBytesToString(result["body"])
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidHTTPResult, err)
-	}
-
-	return map[string]any{
-		"ok":         status >= 200 && status < 300,
-		"status":     status,
-		"statusCode": float64(status),
-		"body":       body,
-		"headers":    headers,
-	}, nil
-}
-
-func cloneOptionalOptions(options []map[string]any) map[string]any {
-	if len(options) == 0 || options[0] == nil {
-		return map[string]any{}
-	}
-	return cloneModuleMap(options[0])
-}
-
-func readBridgeString(values map[string]any, key, fallback string) string {
+func readBridgeString(values map[string]any, key string, fallback string) string {
 	if values == nil {
 		return fallback
 	}
@@ -155,10 +123,7 @@ func readBridgeString(values map[string]any, key, fallback string) string {
 		return fallback
 	}
 	text, ok := value.(string)
-	if !ok {
-		return fallback
-	}
-	if text == "" {
+	if !ok || text == "" {
 		return fallback
 	}
 	return text
@@ -172,11 +137,25 @@ func readBridgeHeaders(values map[string]any) map[string]string {
 	if !ok || value == nil {
 		return nil
 	}
-	mapped, err := bridgeStringMap(value)
-	if err != nil {
+	switch typed := value.(type) {
+	case map[string]string:
+		result := make(map[string]string, len(typed))
+		for key, item := range typed {
+			result[key] = item
+		}
+		return result
+	case map[string]any:
+		result := make(map[string]string, len(typed))
+		for key, item := range typed {
+			text, ok := item.(string)
+			if ok {
+				result[key] = text
+			}
+		}
+		return result
+	default:
 		return nil
 	}
-	return mapped
 }
 
 func readBridgeBody(values map[string]any) any {
@@ -193,75 +172,91 @@ func readBridgeTimeout(values map[string]any) any {
 	if value, ok := values["timeout_ms"]; ok {
 		return value
 	}
-	return values["timeoutMS"]
+	if value, ok := values["timeoutMS"]; ok {
+		return value
+	}
+	return nil
 }
 
-func bridgeStringMap(value any) (map[string]string, error) {
-	if value == nil {
-		return nil, nil
+func normalizeHTTPResult(result map[string]any) (map[string]any, error) {
+	status, ok := result["status"]
+	if !ok {
+		return nil, ErrInvalidHTTPResult
 	}
-	switch typed := value.(type) {
-	case map[string]string:
-		result := make(map[string]string, len(typed))
-		for k, v := range typed {
-			result[k] = v
-		}
-		return result, nil
-	case map[string]any:
-		result := make(map[string]string, len(typed))
-		for k, v := range typed {
-			text, ok := v.(string)
-			if !ok {
-				return nil, fmt.Errorf("header %s is not string", k)
-			}
-			result[k] = text
-		}
-		return result, nil
-	default:
-		return nil, fmt.Errorf("unexpected headers type %T", value)
+	bodyValue, ok := result["body"]
+	if !ok {
+		return nil, ErrInvalidHTTPResult
 	}
+
+	bodyText, ok := normalizeHTTPBody(bodyValue)
+	if !ok {
+		return nil, ErrInvalidHTTPResult
+	}
+
+	normalized := map[string]any{
+		"ok":      httpStatusOK(status),
+		"status":  status,
+		"headers": readBridgeHeaders(map[string]any{"headers": result["headers"]}),
+		"body":    bodyText,
+	}
+	return normalized, nil
 }
 
-func bridgeBytesToString(value any) (string, error) {
+func normalizeHTTPBody(value any) (string, bool) {
 	switch typed := value.(type) {
-	case nil:
-		return "", nil
-	case string:
-		return typed, nil
 	case []byte:
-		return string(typed), nil
+		return string(typed), true
+	case string:
+		return typed, true
 	default:
-		return "", fmt.Errorf("unexpected body type %T", value)
+		return "", false
 	}
 }
 
-func bridgeInt(value any) (int, error) {
+func httpStatusOK(value any) bool {
+	status, ok := toHTTPStatusCode(value)
+	if !ok {
+		return false
+	}
+	return status >= 200 && status < 300
+}
+
+func toHTTPStatusCode(value any) (int64, bool) {
 	switch typed := value.(type) {
 	case int:
-		return typed, nil
+		return int64(typed), true
 	case int8:
-		return int(typed), nil
+		return int64(typed), true
 	case int16:
-		return int(typed), nil
+		return int64(typed), true
 	case int32:
-		return int(typed), nil
+		return int64(typed), true
 	case int64:
-		return int(typed), nil
+		return typed, true
 	case uint:
-		return int(typed), nil
+		return int64(typed), true
 	case uint8:
-		return int(typed), nil
+		return int64(typed), true
 	case uint16:
-		return int(typed), nil
+		return int64(typed), true
 	case uint32:
-		return int(typed), nil
+		return int64(typed), true
 	case uint64:
-		return int(typed), nil
-	case float32:
-		return int(typed), nil
-	case float64:
-		return int(typed), nil
+		return int64(typed), true
 	default:
-		return 0, fmt.Errorf("unexpected status type %T", value)
+		return 0, false
 	}
+}
+
+func mergeHTTPOptions(options ...map[string]any) map[string]any {
+	merged := map[string]any{}
+	for _, option := range options {
+		if option == nil {
+			continue
+		}
+		for key, value := range option {
+			merged[key] = value
+		}
+	}
+	return merged
 }

@@ -3,14 +3,14 @@ package ialang
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 
 	hostapi "iacommon/pkg/host/api"
 	hostfs "iacommon/pkg/host/fs"
+	moduleapi "iacommon/pkg/ialang/module"
 )
 
-const PlatformFSModuleName = "@platform/fs"
+const PlatformFSModuleName = moduleapi.PlatformFSModuleName
 
 var (
 	ErrHostNotConfigured       = errors.New("host is not configured")
@@ -59,22 +59,34 @@ func BuildPlatformFSModuleWithCapability(host hostapi.Host, capabilityID string)
 }
 
 func buildPlatformFSModule(bridge *PlatformFSBridge) map[string]any {
-	namespace := map[string]any{
-		"readFile":   FSReadFileFunc(bridge.ReadFile),
-		"writeFile":  FSWriteFileFunc(bridge.WriteFile),
-		"appendFile": FSAppendFileFunc(bridge.AppendFile),
-		"exists":     FSExistsFunc(bridge.Exists),
-		"mkdir":      FSMkdirFunc(bridge.Mkdir),
-		"readDir":    FSReadDirFunc(bridge.ReadDir),
-		"stat":       FSStatFunc(bridge.Stat),
-		"rename":     FSRenameFunc(bridge.Rename),
-		"remove":     FSRemoveFunc(bridge.Remove),
-		"removeAll":  FSRemoveAllFunc(bridge.RemoveAll),
-		"copy":       FSCopyFunc(bridge.Copy),
+	readFileFn := FSReadFileFunc(bridge.ReadFile)
+	writeFileFn := FSWriteFileFunc(bridge.WriteFile)
+	appendFileFn := FSAppendFileFunc(bridge.AppendFile)
+	existsFn := FSExistsFunc(bridge.Exists)
+	mkdirFn := FSMkdirFunc(bridge.Mkdir)
+	readDirFn := FSReadDirFunc(bridge.ReadDir)
+	statFn := FSStatFunc(bridge.Stat)
+	renameFn := FSRenameFunc(bridge.Rename)
+	removeFn := FSRemoveFunc(bridge.Remove)
+	removeAllFn := FSRemoveAllFunc(bridge.RemoveAll)
+	copyFn := FSCopyFunc(bridge.Copy)
+
+	fsNamespace := map[string]any{
+		"readFile":   readFileFn,
+		"writeFile":  writeFileFn,
+		"appendFile": appendFileFn,
+		"exists":     existsFn,
+		"mkdir":      mkdirFn,
+		"readDir":    readDirFn,
+		"stat":       statFn,
+		"rename":     renameFn,
+		"remove":     removeFn,
+		"removeAll":  removeAllFn,
+		"copy":       copyFn,
 	}
 
-	module := cloneModuleMap(namespace)
-	module["fs"] = namespace
+	module := cloneModuleMap(fsNamespace)
+	module["fs"] = fsNamespace
 	return module
 }
 
@@ -83,26 +95,24 @@ func (b *PlatformFSBridge) ReadFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	data, ok := result["data"]
 	if !ok {
-		return "", fmt.Errorf("%w: missing data", ErrInvalidFSResult)
+		return "", ErrInvalidFSResult
 	}
-
 	switch typed := data.(type) {
 	case []byte:
 		return string(typed), nil
 	case string:
 		return typed, nil
 	default:
-		return "", fmt.Errorf("%w: unexpected readFile payload %T", ErrInvalidFSResult, data)
+		return "", ErrInvalidFSResult
 	}
 }
 
 func (b *PlatformFSBridge) WriteFile(path, content string) (bool, error) {
 	_, err := b.call("fs.write_file", map[string]any{
 		"path":   path,
-		"data":   content,
+		"data":   []byte(content),
 		"create": true,
 		"trunc":  true,
 	})
@@ -113,10 +123,7 @@ func (b *PlatformFSBridge) WriteFile(path, content string) (bool, error) {
 }
 
 func (b *PlatformFSBridge) AppendFile(path, content string) (bool, error) {
-	_, err := b.call("fs.append_file", map[string]any{
-		"path": path,
-		"data": content,
-	})
+	_, err := b.call("fs.append_file", map[string]any{"path": path, "data": []byte(content)})
 	if err != nil {
 		return false, err
 	}
@@ -124,21 +131,22 @@ func (b *PlatformFSBridge) AppendFile(path, content string) (bool, error) {
 }
 
 func (b *PlatformFSBridge) Exists(path string) (bool, error) {
-	_, err := b.Stat(path)
-	if err == nil {
-		return true, nil
+	_, err := b.call("fs.stat", map[string]any{"path": path})
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
 	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	return false, err
+	return true, nil
 }
 
 func (b *PlatformFSBridge) Mkdir(path string, recursive ...bool) (bool, error) {
-	_, err := b.call("fs.mkdir", map[string]any{
-		"path":      path,
-		"recursive": len(recursive) > 0 && recursive[0],
-	})
+	recursiveValue := false
+	if len(recursive) > 0 {
+		recursiveValue = recursive[0]
+	}
+	_, err := b.call("fs.mkdir", map[string]any{"path": path, "recursive": recursiveValue})
 	if err != nil {
 		return false, err
 	}
@@ -150,32 +158,36 @@ func (b *PlatformFSBridge) ReadDir(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	entries, ok := result["entries"]
+	entriesAny, ok := result["entries"]
 	if !ok {
-		return nil, fmt.Errorf("%w: missing entries", ErrInvalidFSResult)
+		return nil, ErrInvalidFSResult
 	}
-
-	switch typed := entries.(type) {
+	switch typed := entriesAny.(type) {
 	case []hostfs.DirEntry:
-		out := make([]string, 0, len(typed))
+		entries := make([]string, 0, len(typed))
 		for _, entry := range typed {
-			out = append(out, entry.Name)
+			entries = append(entries, entry.Name)
 		}
-		return out, nil
+		return entries, nil
 	case []any:
-		out := make([]string, 0, len(typed))
+		entries := make([]string, 0, len(typed))
 		for _, entry := range typed {
 			switch item := entry.(type) {
 			case hostfs.DirEntry:
-				out = append(out, item.Name)
-			case string:
-				out = append(out, item)
+				entries = append(entries, item.Name)
+			case map[string]any:
+				name, ok := item["name"].(string)
+				if !ok {
+					return nil, ErrInvalidFSResult
+				}
+				entries = append(entries, name)
+			default:
+				return nil, ErrInvalidFSResult
 			}
 		}
-		return out, nil
+		return entries, nil
 	default:
-		return nil, fmt.Errorf("%w: unexpected readDir payload %T", ErrInvalidFSResult, entries)
+		return nil, ErrInvalidFSResult
 	}
 }
 
@@ -184,27 +196,28 @@ func (b *PlatformFSBridge) Stat(path string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	info, ok := result["info"]
 	if !ok {
-		return nil, fmt.Errorf("%w: missing info", ErrInvalidFSResult)
+		return nil, ErrInvalidFSResult
 	}
-
 	switch typed := info.(type) {
 	case hostfs.FileInfo:
-		return fileInfoToMap(typed), nil
+		return map[string]any{
+			"name":    typed.Name,
+			"size":    typed.Size,
+			"mode":    typed.Mode,
+			"isDir":   typed.IsDir,
+			"modUnix": typed.ModUnix,
+		}, nil
 	case map[string]any:
 		return typed, nil
 	default:
-		return nil, fmt.Errorf("%w: unexpected stat payload %T", ErrInvalidFSResult, info)
+		return nil, ErrInvalidFSResult
 	}
 }
 
 func (b *PlatformFSBridge) Rename(oldPath, newPath string) (bool, error) {
-	_, err := b.call("fs.rename", map[string]any{
-		"old_path": oldPath,
-		"new_path": newPath,
-	})
+	_, err := b.call("fs.rename", map[string]any{"old_path": oldPath, "new_path": newPath})
 	if err != nil {
 		return false, err
 	}
@@ -212,7 +225,7 @@ func (b *PlatformFSBridge) Rename(oldPath, newPath string) (bool, error) {
 }
 
 func (b *PlatformFSBridge) Remove(path string) (bool, error) {
-	_, err := b.call("fs.remove", map[string]any{"path": path})
+	_, err := b.call("fs.remove", map[string]any{"path": path, "recursive": false})
 	if err != nil {
 		return false, err
 	}
@@ -220,10 +233,7 @@ func (b *PlatformFSBridge) Remove(path string) (bool, error) {
 }
 
 func (b *PlatformFSBridge) RemoveAll(path string) (bool, error) {
-	_, err := b.call("fs.remove", map[string]any{
-		"path":      path,
-		"recursive": true,
-	})
+	_, err := b.call("fs.remove", map[string]any{"path": path, "recursive": true})
 	if err != nil {
 		return false, err
 	}
@@ -231,15 +241,15 @@ func (b *PlatformFSBridge) RemoveAll(path string) (bool, error) {
 }
 
 func (b *PlatformFSBridge) Copy(src, dst string) (bool, error) {
-	content, err := b.ReadFile(src)
+	data, err := b.ReadFile(src)
 	if err != nil {
 		return false, err
 	}
-	return b.WriteFile(dst, content)
+	return b.WriteFile(dst, data)
 }
 
 func (b *PlatformFSBridge) call(operation string, args map[string]any) (map[string]any, error) {
-	if b == nil || b.Host == nil {
+	if b.Host == nil {
 		return nil, ErrHostNotConfigured
 	}
 	if b.CapabilityID == "" {
@@ -254,23 +264,16 @@ func (b *PlatformFSBridge) call(operation string, args map[string]any) (map[stri
 	if err != nil {
 		return nil, err
 	}
+	if result.Value == nil {
+		return map[string]any{}, nil
+	}
 	return result.Value, nil
 }
 
-func fileInfoToMap(info hostfs.FileInfo) map[string]any {
-	return map[string]any{
-		"name":        info.Name,
-		"isDir":       info.IsDir,
-		"size":        float64(info.Size),
-		"mode":        info.Mode,
-		"modTimeUnix": float64(info.ModUnix),
+func cloneModuleMap(exports map[string]any) map[string]any {
+	module := make(map[string]any, len(exports))
+	for key, value := range exports {
+		module[key] = value
 	}
-}
-
-func cloneModuleMap(values map[string]any) map[string]any {
-	result := make(map[string]any, len(values))
-	for key, value := range values {
-		result[key] = value
-	}
-	return result
+	return module
 }

@@ -24,6 +24,8 @@ func TestSharedPackageBoundaries(t *testing.T) {
 				"iacommon/pkg/ialang/packagefile",
 				"iacommon/pkg/ialang/token",
 				"ialang/pkg/lang",
+				"iavm/pkg/bridge",
+				"iavm/pkg/runtime",
 			},
 		},
 		{
@@ -34,6 +36,8 @@ func TestSharedPackageBoundaries(t *testing.T) {
 				"iacommon/pkg/ialang/chunkcodec",
 				"iacommon/pkg/ialang/packagefile",
 				"ialang/pkg/lang",
+				"iavm/pkg/bridge",
+				"iavm/pkg/runtime",
 			},
 		},
 		{
@@ -43,6 +47,22 @@ func TestSharedPackageBoundaries(t *testing.T) {
 				"iacommon/pkg/ialang/chunkcodec",
 				"iacommon/pkg/ialang/packagefile",
 				"ialang/pkg/lang",
+				"iavm/pkg/bridge",
+				"iavm/pkg/runtime",
+			},
+		},
+		{
+			pkgDir: "pkg/ialang/module",
+			forbidden: []string{
+				"iacommon/pkg/ialang/ast",
+				"iacommon/pkg/ialang/bytecode",
+				"iacommon/pkg/ialang/chunkcodec",
+				"iacommon/pkg/ialang/packagefile",
+				"iacommon/pkg/ialang/token",
+				"iacommon/pkg/ialang/value",
+				"ialang/pkg/lang",
+				"iavm/pkg/bridge",
+				"iavm/pkg/runtime",
 			},
 		},
 	}

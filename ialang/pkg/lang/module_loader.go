@@ -1,7 +1,7 @@
 package lang
 
 import (
-	"fmt"
+	moduleapi "iacommon/pkg/ialang/module"
 	comp "ialang/pkg/lang/compiler"
 	"ialang/pkg/lang/frontend"
 	"os"
@@ -12,6 +12,7 @@ import (
 type ModuleLoader struct {
 	mu              sync.RWMutex
 	builtins        map[string]Value
+	builtinRegistry *moduleapi.BuiltinRegistry[Value]
 	asyncRuntime    AsyncRuntime
 	vmOptions       VMOptions
 	resolverOptions ModuleResolverOptions
@@ -39,6 +40,7 @@ func NewModuleLoaderWithResolverOptions(builtins map[string]Value, asyncRuntime 
 	}
 	return &ModuleLoader{
 		builtins:        builtins,
+		builtinRegistry: moduleapi.BuiltinRegistryFromValues(builtins),
 		asyncRuntime:    asyncRuntime,
 		vmOptions:       vmOptions,
 		resolverOptions: resolverOptions,
@@ -52,7 +54,7 @@ func (m *ModuleLoader) Resolve(fromPath, moduleName string) (Value, error) {
 }
 
 func (m *ModuleLoader) resolveWithStack(fromPath, moduleName string, stack map[string]bool) (Value, error) {
-	if val, ok := m.builtins[moduleName]; ok {
+	if val, ok := m.builtinRegistry.Resolve(moduleName); ok {
 		return val, nil
 	}
 
@@ -62,7 +64,7 @@ func (m *ModuleLoader) resolveWithStack(fromPath, moduleName string, stack map[s
 	}
 
 	if stack[resolvedPath] {
-		return nil, fmt.Errorf("cyclic import detected: %s", resolvedPath)
+		return nil, moduleapi.CyclicImportError(resolvedPath)
 	}
 
 	m.mu.RLock()
@@ -101,7 +103,7 @@ func (m *ModuleLoader) resolveWithStack(fromPath, moduleName string, stack map[s
 
 	src, err := os.ReadFile(resolvedPath)
 	if err != nil {
-		loading.err = fmt.Errorf("read module error (%s): %w", resolvedPath, err)
+		loading.err = moduleapi.ReadModuleError(resolvedPath, err)
 		return nil, loading.err
 	}
 
@@ -109,14 +111,14 @@ func (m *ModuleLoader) resolveWithStack(fromPath, moduleName string, stack map[s
 	p := frontend.NewParser(l)
 	program := p.ParseProgram()
 	if parseErrs := p.Errors(); len(parseErrs) > 0 {
-		loading.err = fmt.Errorf("parse module error (%s): %s", resolvedPath, strings.Join(parseErrs, "; "))
+		loading.err = moduleapi.ParseModuleError(resolvedPath, strings.Join(parseErrs, "; "))
 		return nil, loading.err
 	}
 
 	c := comp.NewCompiler()
 	chunk, compileErrs := c.Compile(program)
 	if len(compileErrs) > 0 {
-		loading.err = fmt.Errorf("compile module error (%s): %s", resolvedPath, strings.Join(compileErrs, "; "))
+		loading.err = moduleapi.CompileModuleError(resolvedPath, strings.Join(compileErrs, "; "))
 		return nil, loading.err
 	}
 
@@ -129,7 +131,7 @@ func (m *ModuleLoader) resolveWithStack(fromPath, moduleName string, stack map[s
 		m.vmOptions,
 	)
 	if err := vm.Run(); err != nil {
-		loading.err = fmt.Errorf("runtime module error (%s): %w", resolvedPath, err)
+		loading.err = moduleapi.RuntimeModuleError(resolvedPath, err)
 		return nil, loading.err
 	}
 

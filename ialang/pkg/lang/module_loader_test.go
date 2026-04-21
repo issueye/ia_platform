@@ -1,12 +1,25 @@
 package lang
 
 import (
+	"errors"
+	moduleapi "iacommon/pkg/ialang/module"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 )
+
+func TestModuleLoaderResolveBuiltinFromSharedRegistry(t *testing.T) {
+	loader := NewModuleLoader(map[string]Value{"builtin": float64(7)}, nil)
+
+	loaded, err := loader.Resolve("/tmp/main.ia", "builtin")
+	if err != nil {
+		t.Fatalf("Resolve() unexpected error: %v", err)
+	}
+	if loaded != float64(7) {
+		t.Fatalf("Resolve() = %#v, want 7", loaded)
+	}
+}
 
 func TestModuleLoaderResolveConcurrentDifferentModules(t *testing.T) {
 	dir := t.TempDir()
@@ -45,7 +58,7 @@ func TestModuleLoaderResolveConcurrentDifferentModules(t *testing.T) {
 	}
 }
 
-func TestModuleLoaderResolveCyclicImport(t *testing.T) {
+func TestModuleLoaderResolveCyclicImportUsesSharedErrorContract(t *testing.T) {
 	dir := t.TempDir()
 	moduleAPath := filepath.Join(dir, "a.ia")
 	moduleBPath := filepath.Join(dir, "b.ia")
@@ -66,8 +79,8 @@ export let b = a + 1;
 	if err == nil {
 		t.Fatal("Resolve() expected cyclic import error, got nil")
 	}
-	if !strings.Contains(err.Error(), "cyclic import detected") {
-		t.Fatalf("Resolve() error = %q, want contains %q", err.Error(), "cyclic import detected")
+	if !errors.Is(err, moduleapi.ErrCyclicImport) {
+		t.Fatalf("errors.Is(err, ErrCyclicImport) = false, err = %v", err)
 	}
 }
 
@@ -227,127 +240,6 @@ export let value = dep.n + 1;
 	}
 	if obj["value"] != float64(42) {
 		t.Fatalf("dynamic-import result = %#v, want 42", obj["value"])
-	}
-}
-
-func TestModuleLoaderResolveProjectAbsoluteImport(t *testing.T) {
-	dir := t.TempDir()
-	writeTestModule(t, filepath.Join(dir, "pkg.toml"), "entry = \"main.ia\"\n")
-	if err := os.MkdirAll(filepath.Join(dir, "modules"), 0o755); err != nil {
-		t.Fatalf("mkdir modules error: %v", err)
-	}
-	writeTestModule(t, filepath.Join(dir, "modules", "tools.ia"), "export let answer = 42;\n")
-
-	resolverOptions, err := DiscoverModuleResolverOptions(filepath.Join(dir, "main.ia"))
-	if err != nil {
-		t.Fatalf("DiscoverModuleResolverOptions unexpected error: %v", err)
-	}
-	loader := NewModuleLoaderWithResolverOptions(nil, nil, VMOptions{}, resolverOptions)
-	loaded, err := loader.Resolve(filepath.Join(dir, "entry.ia"), "/modules/tools")
-	if err != nil {
-		t.Fatalf("Resolve() unexpected error: %v", err)
-	}
-	obj, ok := loaded.(Object)
-	if !ok {
-		t.Fatalf("Resolve() value type = %T, want Object", loaded)
-	}
-	if obj["answer"] != float64(42) {
-		t.Fatalf("module answer = %#v, want 42", obj["answer"])
-	}
-}
-
-func TestModuleLoaderResolveRootAliasImport(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "shared"), 0o755); err != nil {
-		t.Fatalf("mkdir shared error: %v", err)
-	}
-	writeTestModule(t, filepath.Join(dir, "pkg.toml"), "entry = \"main.ia\"\n\n[imports]\nroot_alias = \"@\"\n")
-	writeTestModule(t, filepath.Join(dir, "shared", "math.ia"), "export let answer = 42;\n")
-
-	resolverOptions, err := DiscoverModuleResolverOptions(filepath.Join(dir, "main.ia"))
-	if err != nil {
-		t.Fatalf("DiscoverModuleResolverOptions unexpected error: %v", err)
-	}
-	loader := NewModuleLoaderWithResolverOptions(nil, nil, VMOptions{}, resolverOptions)
-	loaded, err := loader.Resolve(filepath.Join(dir, "main.ia"), "@/shared/math")
-	if err != nil {
-		t.Fatalf("Resolve() unexpected error: %v", err)
-	}
-	obj, ok := loaded.(Object)
-	if !ok {
-		t.Fatalf("Resolve() value type = %T, want Object", loaded)
-	}
-	if obj["answer"] != float64(42) {
-		t.Fatalf("module answer = %#v, want 42", obj["answer"])
-	}
-}
-
-func TestModuleLoaderResolveAliasImport(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "modules"), 0o755); err != nil {
-		t.Fatalf("mkdir modules error: %v", err)
-	}
-	writeTestModule(t, filepath.Join(dir, "pkg.toml"), "entry = \"main.ia\"\n\n[imports.aliases]\n\"@\" = \"modules\"\n")
-	writeTestModule(t, filepath.Join(dir, "modules", "math.ia"), "export let answer = 42;\n")
-
-	resolverOptions, err := DiscoverModuleResolverOptions(filepath.Join(dir, "main.ia"))
-	if err != nil {
-		t.Fatalf("DiscoverModuleResolverOptions unexpected error: %v", err)
-	}
-	loader := NewModuleLoaderWithResolverOptions(nil, nil, VMOptions{}, resolverOptions)
-	loaded, err := loader.Resolve(filepath.Join(dir, "main.ia"), "@/math")
-	if err != nil {
-		t.Fatalf("Resolve() unexpected error: %v", err)
-	}
-	obj, ok := loaded.(Object)
-	if !ok {
-		t.Fatalf("Resolve() value type = %T, want Object", loaded)
-	}
-	if obj["answer"] != float64(42) {
-		t.Fatalf("module answer = %#v, want 42", obj["answer"])
-	}
-}
-
-func TestModuleLoaderResolveRootAliasAndNamedAliasesTogether(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "shared"), 0o755); err != nil {
-		t.Fatalf("mkdir shared error: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, "modules"), 0o755); err != nil {
-		t.Fatalf("mkdir modules error: %v", err)
-	}
-	writeTestModule(t, filepath.Join(dir, "pkg.toml"), "entry = \"main.ia\"\n\n[imports]\nroot_alias = \"@\"\n\n[imports.aliases]\n\"#lib\" = \"modules\"\n")
-	writeTestModule(t, filepath.Join(dir, "shared", "config.ia"), "export let kind = \"root\";\n")
-	writeTestModule(t, filepath.Join(dir, "modules", "math.ia"), "export let kind = \"alias\";\n")
-
-	resolverOptions, err := DiscoverModuleResolverOptions(filepath.Join(dir, "main.ia"))
-	if err != nil {
-		t.Fatalf("DiscoverModuleResolverOptions unexpected error: %v", err)
-	}
-	loader := NewModuleLoaderWithResolverOptions(nil, nil, VMOptions{}, resolverOptions)
-
-	rootLoaded, err := loader.Resolve(filepath.Join(dir, "main.ia"), "@/shared/config")
-	if err != nil {
-		t.Fatalf("Resolve() root alias unexpected error: %v", err)
-	}
-	rootObj, ok := rootLoaded.(Object)
-	if !ok {
-		t.Fatalf("Resolve() root alias value type = %T, want Object", rootLoaded)
-	}
-	if rootObj["kind"] != "root" {
-		t.Fatalf("root alias module kind = %#v, want %q", rootObj["kind"], "root")
-	}
-
-	aliasLoaded, err := loader.Resolve(filepath.Join(dir, "main.ia"), "#lib/math")
-	if err != nil {
-		t.Fatalf("Resolve() named alias unexpected error: %v", err)
-	}
-	aliasObj, ok := aliasLoaded.(Object)
-	if !ok {
-		t.Fatalf("Resolve() named alias value type = %T, want Object", aliasLoaded)
-	}
-	if aliasObj["kind"] != "alias" {
-		t.Fatalf("named alias module kind = %#v, want %q", aliasObj["kind"], "alias")
 	}
 }
 

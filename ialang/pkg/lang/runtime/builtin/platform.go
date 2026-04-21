@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	platformFSModuleName   = "@platform/fs"
-	platformHTTPModuleName = "@platform/http"
+	platformFSModuleName   = bridgeialang.PlatformFSModuleName
+	platformHTTPModuleName = bridgeialang.PlatformHTTPModuleName
 )
 
 type lazyPlatformFSBridge struct {

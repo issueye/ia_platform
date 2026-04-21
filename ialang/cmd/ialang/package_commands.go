@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	moduleapi "iacommon/pkg/ialang/module"
 	"io"
 	"os"
 	"path/filepath"
@@ -101,6 +102,7 @@ func buildPackage(entryPath string, stderr io.Writer) (*packagefile.Package, err
 		return nil, err
 	}
 	builtins := rtbuiltin.DefaultModules(nil)
+	builtinRegistry := moduleapi.BuiltinRegistryFromValues(builtins)
 
 	modules := map[string]*bc.Chunk{}
 	imports := map[string]map[string]string{}
@@ -136,7 +138,7 @@ func buildPackage(entryPath string, stderr io.Writer) (*packagefile.Package, err
 
 		rules := map[string]string{}
 		for _, moduleName := range moduleImports {
-			if _, ok := builtins[moduleName]; ok {
+			if builtinRegistry.Has(moduleName) {
 				continue
 			}
 			targetPath, err := lang.ResolveModulePathWithOptions(modulePath, moduleName, resolverOptions)
@@ -188,42 +190,44 @@ func extractImportModules(chunk *bc.Chunk) ([]string, error) {
 }
 
 type packageModuleLoader struct {
-	pkg          *packagefile.Package
-	builtins     map[string]lang.Value
-	asyncRuntime lang.AsyncRuntime
-	vmOptions    lang.VMOptions
-	cache        map[string]lang.Object
-	loading      map[string]bool
+	pkg             *packagefile.Package
+	builtins        map[string]lang.Value
+	builtinRegistry *moduleapi.BuiltinRegistry[lang.Value]
+	asyncRuntime    lang.AsyncRuntime
+	vmOptions       lang.VMOptions
+	cache           map[string]lang.Object
+	loading         map[string]bool
 }
 
 func newPackageModuleLoader(pkg *packagefile.Package, builtins map[string]lang.Value, asyncRuntime lang.AsyncRuntime, vmOptions lang.VMOptions) *packageModuleLoader {
 	return &packageModuleLoader{
-		pkg:          pkg,
-		builtins:     builtins,
-		asyncRuntime: asyncRuntime,
-		vmOptions:    vmOptions,
-		cache:        map[string]lang.Object{},
-		loading:      map[string]bool{},
+		pkg:             pkg,
+		builtins:        builtins,
+		builtinRegistry: moduleapi.BuiltinRegistryFromValues(builtins),
+		asyncRuntime:    asyncRuntime,
+		vmOptions:       vmOptions,
+		cache:           map[string]lang.Object{},
+		loading:         map[string]bool{},
 	}
 }
 
 func (m *packageModuleLoader) Resolve(fromPath, moduleName string) (lang.Value, error) {
-	if val, ok := m.builtins[moduleName]; ok {
+	if val, ok := m.builtinRegistry.Resolve(moduleName); ok {
 		return val, nil
 	}
 	targetPath, ok := m.pkg.ResolveImport(fromPath, moduleName)
 	if !ok {
-		return nil, fmt.Errorf("module not found in package: %s", moduleName)
+		return nil, moduleapi.ModuleNotFoundError(moduleName)
 	}
 	if exports, ok := m.cache[targetPath]; ok {
 		return exports, nil
 	}
 	if m.loading[targetPath] {
-		return nil, fmt.Errorf("cyclic import detected: %s", targetPath)
+		return nil, moduleapi.CyclicImportError(targetPath)
 	}
 	chunk, ok := m.pkg.Modules[targetPath]
 	if !ok {
-		return nil, fmt.Errorf("module chunk not found in package: %s", targetPath)
+		return nil, moduleapi.ModuleNotFoundError(moduleName)
 	}
 
 	m.loading[targetPath] = true
@@ -231,7 +235,7 @@ func (m *packageModuleLoader) Resolve(fromPath, moduleName string) (lang.Value, 
 
 	vm := lang.NewVMWithOptions(chunk, m.builtins, m.Resolve, targetPath, m.asyncRuntime, m.vmOptions)
 	if err := vm.Run(); err != nil {
-		return nil, fmt.Errorf("runtime module error (%s): %w", targetPath, err)
+		return nil, moduleapi.RuntimeModuleError(targetPath, err)
 	}
 	exports := clonePackageObject(vm.Exports())
 	m.cache[targetPath] = exports

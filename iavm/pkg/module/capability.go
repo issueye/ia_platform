@@ -1,10 +1,12 @@
 package module
 
-type CapabilityKind string
+import hostapi "iacommon/pkg/host/api"
+
+type CapabilityKind = hostapi.CapabilityKind
 
 const (
-	CapabilityFS      CapabilityKind = "fs"
-	CapabilityNetwork CapabilityKind = "network"
+	CapabilityFS      = hostapi.CapabilityFS
+	CapabilityNetwork = hostapi.CapabilityNetwork
 )
 
 type CapabilityDecl struct {

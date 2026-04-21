@@ -1,19 +1,26 @@
 package ialang
 
-import (
-	"errors"
-	"fmt"
+import moduleapi "iacommon/pkg/ialang/module"
+
+var (
+	ErrUnknownModule = moduleapi.ErrUnknownModule
+	builtinRegistry  = newBuiltinRegistry()
 )
 
-var ErrUnknownModule = errors.New("unknown module")
-
 func ResolveModule(name string) (any, error) {
-	switch name {
-	case PlatformFSModuleName:
-		return BuildPlatformFSModule(), nil
-	case "@platform/http":
-		return BuildPlatformHTTPModule(), nil
-	default:
-		return nil, fmt.Errorf("%w: %s", ErrUnknownModule, name)
+	if moduleValue, ok := builtinRegistry.Resolve(name); ok {
+		return moduleValue, nil
 	}
+	return nil, moduleapi.UnknownModuleError(name)
+}
+
+func newBuiltinRegistry() *moduleapi.BuiltinRegistry[any] {
+	registry := moduleapi.NewBuiltinRegistry[any]()
+	registry.RegisterProvider(PlatformFSModuleName, func() any {
+		return BuildPlatformFSModule()
+	})
+	registry.RegisterProvider(PlatformHTTPModuleName, func() any {
+		return BuildPlatformHTTPModule()
+	})
+	return registry
 }

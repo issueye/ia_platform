@@ -2,6 +2,11 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	bc "iacommon/pkg/ialang/bytecode"
+	moduleapi "iacommon/pkg/ialang/module"
+	"iacommon/pkg/ialang/packagefile"
+	"ialang/pkg/lang"
 	"os"
 	"path/filepath"
 	"strings"
@@ -293,6 +298,79 @@ func TestExecuteRunPkgCommandAutoCallsMain(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "entry main() call error") {
 		t.Fatalf("executeRunPkgCommand error = %v, want entry main() call error", err)
+	}
+}
+
+func TestPackageModuleLoaderResolvesBuiltinFromSharedRegistry(t *testing.T) {
+	loader := newPackageModuleLoader(&packagefile.Package{}, map[string]lang.Value{"builtin": float64(9)}, nil, lang.VMOptions{})
+
+	loaded, err := loader.Resolve("/entry.ia", "builtin")
+	if err != nil {
+		t.Fatalf("Resolve() unexpected error: %v", err)
+	}
+	if loaded != float64(9) {
+		t.Fatalf("Resolve() = %#v, want 9", loaded)
+	}
+}
+
+func TestPackageModuleLoaderUsesSharedModuleNotFoundError(t *testing.T) {
+	loader := newPackageModuleLoader(&packagefile.Package{
+		Entry:   "/entry.ia",
+		Modules: map[string]*bc.Chunk{},
+		Imports: map[string]map[string]string{},
+	}, nil, nil, lang.VMOptions{})
+
+	_, err := loader.Resolve("/entry.ia", "./missing")
+	if err == nil {
+		t.Fatal("Resolve() expected error, got nil")
+	}
+	if !errors.Is(err, moduleapi.ErrModuleNotFound) {
+		t.Fatalf("errors.Is(err, ErrModuleNotFound) = false, err = %v", err)
+	}
+}
+
+func TestPackageModuleLoaderUsesSharedCyclicImportError(t *testing.T) {
+	targetPath := "/dep.ia"
+	loader := newPackageModuleLoader(&packagefile.Package{
+		Entry:   "/entry.ia",
+		Modules: map[string]*bc.Chunk{targetPath: {}},
+		Imports: map[string]map[string]string{"/entry.ia": {"./dep": targetPath}},
+	}, nil, nil, lang.VMOptions{})
+	loader.loading[targetPath] = true
+
+	_, err := loader.Resolve("/entry.ia", "./dep")
+	if err == nil {
+		t.Fatal("Resolve() expected error, got nil")
+	}
+	if !errors.Is(err, moduleapi.ErrCyclicImport) {
+		t.Fatalf("errors.Is(err, ErrCyclicImport) = false, err = %v", err)
+	}
+}
+
+func TestPackageModuleLoaderUsesSharedRuntimeModuleError(t *testing.T) {
+	dir := t.TempDir()
+	entryPath := filepath.Join(dir, "main.ia")
+	depPath := filepath.Join(dir, "dep.ia")
+	if err := os.WriteFile(depPath, []byte("missing_symbol();\nexport let value = 1;\n"), 0o644); err != nil {
+		t.Fatalf("write dep file error: %v", err)
+	}
+	if err := os.WriteFile(entryPath, []byte("import { value } from \"./dep\";\nprint(value);\n"), 0o644); err != nil {
+		t.Fatalf("write entry file error: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	pkg, err := buildPackage(entryPath, &stderr)
+	if err != nil {
+		t.Fatalf("buildPackage unexpected error: %v", err)
+	}
+
+	loader := newPackageModuleLoader(pkg, nil, nil, lang.VMOptions{})
+	_, err = loader.Resolve(pkg.Entry, "./dep")
+	if err == nil {
+		t.Fatal("Resolve() expected error, got nil")
+	}
+	if !errors.Is(err, moduleapi.ErrRuntimeModule) {
+		t.Fatalf("errors.Is(err, ErrRuntimeModule) = false, err = %v", err)
 	}
 }
 

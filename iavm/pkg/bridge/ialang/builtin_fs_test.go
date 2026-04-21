@@ -8,6 +8,7 @@ import (
 
 	hostapi "iacommon/pkg/host/api"
 	hostfs "iacommon/pkg/host/fs"
+	moduleapi "iacommon/pkg/ialang/module"
 )
 
 func TestBuildPlatformFSModuleWithHost(t *testing.T) {
@@ -105,21 +106,13 @@ func TestBuildPlatformFSModuleWithHostPropagatesReadOnlyRestriction(t *testing.T
 	}
 }
 
-func TestResolveModuleReturnsPlatformFSModule(t *testing.T) {
-	resolved, err := ResolveModule(PlatformFSModuleName)
-	if err != nil {
-		t.Fatalf("resolve module: %v", err)
+func TestResolveModuleUsesSharedUnknownModuleError(t *testing.T) {
+	_, err := ResolveModule("@platform/missing")
+	if err == nil {
+		t.Fatal("ResolveModule() expected error, got nil")
 	}
-
-	module, ok := resolved.(map[string]any)
-	if !ok {
-		t.Fatalf("expected map[string]any, got %T", resolved)
-	}
-	if _, ok := module["readFile"]; !ok {
-		t.Fatal("expected readFile export in resolved module")
-	}
-	if _, ok := module["fs"]; !ok {
-		t.Fatal("expected fs namespace in resolved module")
+	if !errors.Is(err, moduleapi.ErrUnknownModule) {
+		t.Fatalf("errors.Is(err, ErrUnknownModule) = false, err = %v", err)
 	}
 }
 
