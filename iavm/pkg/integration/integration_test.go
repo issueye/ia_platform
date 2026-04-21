@@ -568,3 +568,78 @@ func TestFullPipeline_ObjectPropertyAccess(t *testing.T) {
 		t.Fatalf("expected 10, got %v", val)
 	}
 }
+
+func TestFullPipeline_TryCatch(t *testing.T) {
+	// try { throw "err"; } catch (e) { return 42; }
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpPushTry, A: 4, B: 0},    // catch handler at instruction 4
+			{Op: bytecode.OpConstant, A: 0, B: 0},   // push "err"
+			{Op: bytecode.OpThrow},                  // throw
+			{Op: bytecode.OpPopTry},                 // pop try (unreachable in normal flow)
+			{Op: bytecode.OpConstant, A: 1, B: 0},   // push 42 (catch handler)
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{"err", float64(42)},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueF64 || val.Raw.(float64) != 42 {
+		t.Fatalf("expected 42, got %v", val)
+	}
+}
+
+func TestFullPipeline_TryCatchExceptionValue(t *testing.T) {
+	// try { throw "bad"; } catch (e) { return e; }
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpPushTry, A: 4, B: 0},    // catch handler at instruction 4
+			{Op: bytecode.OpConstant, A: 0, B: 0},   // push "bad"
+			{Op: bytecode.OpThrow},                  // throw
+			{Op: bytecode.OpPopTry},                 // pop try (unreachable)
+			{Op: bytecode.OpReturn},                 // return e (e is on stack from catch)
+		},
+		Constants: []any{"bad"},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueString || val.Raw.(string) != "bad" {
+		t.Fatalf("expected 'bad', got %v", val)
+	}
+}

@@ -10,4 +10,5 @@ var (
 	ErrUnknownOperation  = errors.New("unknown host operation")
 	ErrHandleNotFound    = errors.New("handle not found")
 	ErrResourceExhausted = errors.New("resource exhausted")
+	ErrUncaughtException = errors.New("uncaught exception")
 )

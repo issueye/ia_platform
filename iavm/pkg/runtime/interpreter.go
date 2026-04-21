@@ -34,6 +34,30 @@ func Interpret(vm *VM, entryFuncIndex uint32) error {
 		frame.IP++
 
 		if err := vm.dispatch(inst, frame); err != nil {
+			if err == core.ErrUncaughtException {
+				// Attempt exception recovery by unwinding to the nearest try handler
+				handled := false
+				for len(vm.frames) > 0 {
+					currentFrame := vm.frames[len(vm.frames)-1]
+					if len(currentFrame.TryHandlers) > 0 {
+						// Pop the nearest try handler and jump to it
+						handlerIdx := len(currentFrame.TryHandlers) - 1
+						handlerIP := currentFrame.TryHandlers[handlerIdx]
+						currentFrame.TryHandlers = currentFrame.TryHandlers[:handlerIdx]
+						currentFrame.IP = handlerIP
+						vm.stack.Push(vm.exception)
+						vm.exception = core.Value{Kind: core.ValueNull}
+						handled = true
+						break
+					}
+					// No handler in current frame; pop and continue unwinding
+					vm.frames = vm.frames[:len(vm.frames)-1]
+				}
+				if handled {
+					continue
+				}
+				return err
+			}
 			return err
 		}
 	}
@@ -427,14 +451,11 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 
 	case core.OpPushTry:
-		if vm.tryStack == nil {
-			vm.tryStack = make([]uint32, 0, 8)
-		}
-		vm.tryStack = append(vm.tryStack, inst.A)
+		frame.TryHandlers = append(frame.TryHandlers, inst.A)
 
 	case core.OpPopTry:
-		if vm.tryStack != nil && len(vm.tryStack) > 0 {
-			vm.tryStack = vm.tryStack[:len(vm.tryStack)-1]
+		if len(frame.TryHandlers) > 0 {
+			frame.TryHandlers = frame.TryHandlers[:len(frame.TryHandlers)-1]
 		}
 
 	case core.OpIndex:
@@ -479,9 +500,8 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 
 	case core.OpThrow:
-		a := vm.stack.Pop()
-		msg := valueToString(a)
-		return fmt.Errorf("throw: %s", msg)
+		vm.exception = vm.stack.Pop()
+		return core.ErrUncaughtException
 
 	default:
 		return fmt.Errorf("unimplemented opcode: %v", inst.Op)

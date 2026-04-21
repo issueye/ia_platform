@@ -308,8 +308,11 @@ func verifyStackDepth(fn *module.Function) error {
 func stackDelta(inst core.Instruction) int {
 	switch inst.Op {
 	case core.OpNop, core.OpJump, core.OpPushTry, core.OpPopTry,
-		core.OpReturn, core.OpThrow:
+		core.OpReturn:
 		return 0
+
+	case core.OpThrow:
+		return -1
 
 	case core.OpConst, core.OpLoadLocal, core.OpLoadGlobal,
 		core.OpMakeObject, core.OpImportFunc, core.OpImportCap,

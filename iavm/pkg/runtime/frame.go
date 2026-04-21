@@ -10,6 +10,7 @@ type Frame struct {
 	IP            uint32
 	Locals        []core.Value
 	BasePointer   uint32
+	TryHandlers   []uint32 // stack of try handler IP addresses
 }
 
 func NewFrame(fnIndex uint32, fn *module.Function, baseSP uint32) *Frame {
@@ -22,5 +23,6 @@ func NewFrame(fnIndex uint32, fn *module.Function, baseSP uint32) *Frame {
 		IP:            0,
 		Locals:        locals,
 		BasePointer:   baseSP,
+		TryHandlers:   make([]uint32, 0, 4),
 	}
 }

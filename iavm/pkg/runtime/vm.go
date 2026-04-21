@@ -22,7 +22,7 @@ type VM struct {
 	handles       *HandleTable
 	frames        []*Frame
 	capabilityIDs map[uint32]string
-	tryStack      []uint32
+	exception     core.Value // current uncaught exception value
 	startedAt     int64
 	stepCount     int64
 	builtins      map[string]BuiltinFunc

@@ -1445,3 +1445,158 @@ func TestInterpret_JumpIfNotNullish_Null(t *testing.T) {
 		t.Fatalf("expected 42, got %v", val)
 	}
 }
+
+func TestInterpret_TryCatch(t *testing.T) {
+	// try { throw "error"; } catch (e) { return 42; }
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"error", int64(42)},
+				Code: []core.Instruction{
+					{Op: core.OpPushTry, A: 3},  // catch handler at instruction 3
+					{Op: core.OpConst, A: 0},     // push "error"
+					{Op: core.OpThrow},           // throw "error"
+					{Op: core.OpPopTry},          // pop try (unreachable)
+					{Op: core.OpConst, A: 1},     // push 42 (catch handler)
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 42 {
+		t.Fatalf("expected 42, got %v", val)
+	}
+}
+
+func TestInterpret_TryCatch_Rethrow(t *testing.T) {
+	// try { throw "inner"; } catch (e) { throw e; }
+	// This should propagate the exception since there's no outer handler.
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"inner"},
+				Code: []core.Instruction{
+					{Op: core.OpPushTry, A: 3},
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpThrow},
+					{Op: core.OpPopTry},
+					{Op: core.OpThrow}, // rethrow the caught exception
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err == nil {
+		t.Fatal("expected uncaught exception error")
+	}
+}
+
+func TestInterpret_NestedTryCatch(t *testing.T) {
+	// try {
+	//   try { throw "err"; } catch (e) { return 21; }
+	// } catch (e) { return 99; }
+	// inner catch should handle it, return 21.
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"err", int64(21), int64(99)},
+				Code: []core.Instruction{
+					{Op: core.OpPushTry, A: 7},   // outer catch at 7
+					{Op: core.OpPushTry, A: 4},   // inner catch at 4
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpThrow},
+					{Op: core.OpPopTry},
+					{Op: core.OpConst, A: 1},     // return 21
+					{Op: core.OpReturn},
+					{Op: core.OpPopTry},
+					{Op: core.OpConst, A: 2},     // return 99 (outer catch)
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 21 {
+		t.Fatalf("expected 21, got %v", val)
+	}
+}
+
+func TestInterpret_TryCatch_Unhandled(t *testing.T) {
+	// throw without any try-catch => error
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"boom"},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpThrow},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err == nil {
+		t.Fatal("expected error for unhandled exception")
+	}
+}
