@@ -434,3 +434,137 @@ func TestFullPipeline_FunctionAccessesGlobal(t *testing.T) {
 func (h *mockHost) Poll(ctx context.Context, handleID uint64) (api.PollResult, error) {
 	return api.PollResult{}, nil
 }
+
+func TestFullPipeline_IfElse(t *testing.T) {
+	// if (true) { 42 } else { 99 }
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpConstant, A: 0, B: 0},     // push true
+			{Op: bytecode.OpJumpIfFalse, A: 5, B: 0},  // if false, jump to else
+			{Op: bytecode.OpConstant, A: 1, B: 0},     // push 42 (then branch)
+			{Op: bytecode.OpJump, A: 6, B: 0},         // jump over else
+			{Op: bytecode.OpConstant, A: 2, B: 0},     // push 99 (else branch)
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{true, float64(42), float64(99)},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueF64 || val.Raw.(float64) != 42 {
+		t.Fatalf("expected 42, got %v", val)
+	}
+}
+
+func TestFullPipeline_WhileLoop(t *testing.T) {
+	// let i = 0; let sum = 0;
+	// while (i < 3) { sum = sum + i; i = i + 1; }
+	// return sum; // should be 0+1+2 = 3
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpConstant, A: 0, B: 0},     // push 0
+			{Op: bytecode.OpDefineName, A: 1, B: 0},   // define i = 0
+			{Op: bytecode.OpConstant, A: 0, B: 0},     // push 0
+			{Op: bytecode.OpDefineName, A: 2, B: 0},   // define sum = 0
+			// loop condition: i < 3
+			{Op: bytecode.OpGetName, A: 1, B: 0},      // push i
+			{Op: bytecode.OpConstant, A: 3, B: 0},     // push 3
+			{Op: bytecode.OpLess},                     // i < 3
+			{Op: bytecode.OpJumpIfFalse, A: 17, B: 0}, // if false, jump to end
+			// loop body: sum = sum + i
+			{Op: bytecode.OpGetName, A: 2, B: 0}, // push sum
+			{Op: bytecode.OpGetName, A: 1, B: 0}, // push i
+			{Op: bytecode.OpAdd},                  // sum + i
+			{Op: bytecode.OpSetName, A: 2, B: 0}, // sum = ...
+			// loop body: i = i + 1
+			{Op: bytecode.OpGetName, A: 1, B: 0}, // push i
+			{Op: bytecode.OpConstant, A: 4, B: 0}, // push 1
+			{Op: bytecode.OpAdd},                  // i + 1
+			{Op: bytecode.OpSetName, A: 1, B: 0}, // i = ...
+			{Op: bytecode.OpJump, A: 4, B: 0},    // jump back to condition
+			// end
+			{Op: bytecode.OpGetName, A: 2, B: 0}, // push sum
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{float64(0), "i", "sum", float64(3), float64(1)},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueF64 || val.Raw.(float64) != 3 {
+		t.Fatalf("expected 3, got %v", val)
+	}
+}
+
+func TestFullPipeline_ObjectPropertyAccess(t *testing.T) {
+	// let obj = {x: 10}; return obj.x;
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpObject},                   // push empty object
+			{Op: bytecode.OpDup},                      // dup object
+			{Op: bytecode.OpConstant, A: 1, B: 0},     // push 10
+			{Op: bytecode.OpSetProperty, A: 0, B: 0},  // obj.x = 10
+			{Op: bytecode.OpDup},                      // dup object
+			{Op: bytecode.OpGetProperty, A: 0, B: 0},  // obj.x
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{"x", float64(10)},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueF64 || val.Raw.(float64) != 10 {
+		t.Fatalf("expected 10, got %v", val)
+	}
+}

@@ -265,11 +265,14 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if obj.Kind != core.ValueObjectRef {
 			return fmt.Errorf("cannot get property from non-object")
 		}
+		var name string
+		var ok bool
 		fn := &vm.mod.Functions[frame.FunctionIndex]
-		if int(inst.A) >= len(fn.Constants) {
-			return fmt.Errorf("property name constant index %d out of range", inst.A)
+		if int(inst.A) < len(fn.Constants) {
+			name, ok = fn.Constants[inst.A].(string)
+		} else if len(vm.mod.Constants) > 0 && int(inst.A) < len(vm.mod.Constants) {
+			name, ok = vm.mod.Constants[inst.A].(string)
 		}
-		name, ok := fn.Constants[inst.A].(string)
 		if !ok {
 			return fmt.Errorf("property name at index %d is not a string", inst.A)
 		}
@@ -282,11 +285,14 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if obj.Kind != core.ValueObjectRef {
 			return fmt.Errorf("cannot set property on non-object")
 		}
+		var name string
+		var ok bool
 		fn := &vm.mod.Functions[frame.FunctionIndex]
-		if int(inst.A) >= len(fn.Constants) {
-			return fmt.Errorf("property name constant index %d out of range", inst.A)
+		if int(inst.A) < len(fn.Constants) {
+			name, ok = fn.Constants[inst.A].(string)
+		} else if len(vm.mod.Constants) > 0 && int(inst.A) < len(vm.mod.Constants) {
+			name, ok = vm.mod.Constants[inst.A].(string)
 		}
-		name, ok := fn.Constants[inst.A].(string)
 		if !ok {
 			return fmt.Errorf("property name at index %d is not a string", inst.A)
 		}
