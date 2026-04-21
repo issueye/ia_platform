@@ -224,21 +224,21 @@ func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
 			iavmInst.A = uint32(inst.A)
 
 		case bytecode.OpPop:
-			// No direct equivalent, use Nop
-			iavmInst.Op = core.OpNop
+			iavmInst.Op = core.OpPop
 
 		case bytecode.OpDup:
-			// No direct equivalent, use Nop
-			iavmInst.Op = core.OpNop
+			iavmInst.Op = core.OpDup
 
 		case bytecode.OpTruthy:
 			iavmInst.Op = core.OpNot
 			iavmInsts = append(iavmInsts, iavmInst)
 			iavmInst = core.Instruction{Op: core.OpNot}
 
-		case bytecode.OpAnd, bytecode.OpOr:
-			// Logical ops handled via jump sequences in compiler
-			iavmInst.Op = core.OpNop
+		case bytecode.OpAnd:
+			iavmInst.Op = core.OpAnd
+
+		case bytecode.OpOr:
+			iavmInst.Op = core.OpOr
 
 		case bytecode.OpClosure:
 			// Closures become function references
@@ -258,15 +258,40 @@ func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
 			iavmInst.Op = core.OpGetProp
 			iavmInst.A = uint32(inst.A)
 
+		case bytecode.OpBitAnd:
+			iavmInst.Op = core.OpBitAnd
+
+		case bytecode.OpBitOr:
+			iavmInst.Op = core.OpBitOr
+
+		case bytecode.OpBitXor:
+			iavmInst.Op = core.OpBitXor
+
+		case bytecode.OpShl:
+			iavmInst.Op = core.OpShl
+
+		case bytecode.OpShr:
+			iavmInst.Op = core.OpShr
+
+		case bytecode.OpTypeof:
+			iavmInst.Op = core.OpTypeof
+
+		case bytecode.OpPushTry:
+			iavmInst.Op = core.OpPushTry
+			iavmInst.A = uint32(inst.A)
+
+		case bytecode.OpPopTry:
+			iavmInst.Op = core.OpPopTry
+
+		case bytecode.OpThrow:
+			iavmInst.Op = core.OpThrow
+
 		case bytecode.OpImportNamespace, bytecode.OpImportDynamic,
 			bytecode.OpExportName, bytecode.OpExportAs, bytecode.OpExportDefault,
 			bytecode.OpExportAll, bytecode.OpSuper, bytecode.OpSuperCall,
-			bytecode.OpTypeof, bytecode.OpObjectKeys, bytecode.OpSpreadArray,
+			bytecode.OpObjectKeys, bytecode.OpSpreadArray,
 			bytecode.OpSpreadObject, bytecode.OpSpreadCall, bytecode.OpAwait,
-			bytecode.OpPushTry, bytecode.OpPopTry, bytecode.OpThrow,
-			bytecode.OpJumpIfNullish, bytecode.OpJumpIfNotNullish,
-			bytecode.OpBitAnd, bytecode.OpBitOr, bytecode.OpBitXor,
-			bytecode.OpShl, bytecode.OpShr:
+			bytecode.OpJumpIfNullish, bytecode.OpJumpIfNotNullish:
 			// Unsupported in minimal iavm, use Nop
 			iavmInst.Op = core.OpNop
 

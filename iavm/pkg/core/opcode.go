@@ -34,4 +34,17 @@ const (
 	OpImportCap
 	OpHostCall
 	OpHostPoll
+	OpDup
+	OpPop
+	OpBitAnd
+	OpBitOr
+	OpBitXor
+	OpShl
+	OpShr
+	OpAnd
+	OpOr
+	OpTypeof
+	OpPushTry
+	OpPopTry
+	OpThrow
 )

@@ -318,6 +318,68 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 	case core.OpHostPoll:
 		vm.stack.Push(core.Value{Kind: core.ValueNull})
 
+	case core.OpDup:
+		val := vm.stack.Peek(0)
+		vm.stack.Push(val)
+
+	case core.OpPop:
+		vm.stack.Pop()
+
+	case core.OpBitAnd:
+		b := vm.stack.Pop()
+		a := vm.stack.Pop()
+		vm.stack.Push(bitAndValues(a, b))
+
+	case core.OpBitOr:
+		b := vm.stack.Pop()
+		a := vm.stack.Pop()
+		vm.stack.Push(bitOrValues(a, b))
+
+	case core.OpBitXor:
+		b := vm.stack.Pop()
+		a := vm.stack.Pop()
+		vm.stack.Push(bitXorValues(a, b))
+
+	case core.OpShl:
+		b := vm.stack.Pop()
+		a := vm.stack.Pop()
+		vm.stack.Push(shlValues(a, b))
+
+	case core.OpShr:
+		b := vm.stack.Pop()
+		a := vm.stack.Pop()
+		vm.stack.Push(shrValues(a, b))
+
+	case core.OpAnd:
+		b := vm.stack.Pop()
+		a := vm.stack.Pop()
+		vm.stack.Push(core.Value{Kind: core.ValueBool, Raw: isTruthy(a) && isTruthy(b)})
+
+	case core.OpOr:
+		b := vm.stack.Pop()
+		a := vm.stack.Pop()
+		vm.stack.Push(core.Value{Kind: core.ValueBool, Raw: isTruthy(a) || isTruthy(b)})
+
+	case core.OpTypeof:
+		a := vm.stack.Pop()
+		vm.stack.Push(core.Value{Kind: core.ValueString, Raw: typeOfValue(a)})
+
+	case core.OpPushTry:
+		if vm.tryStack == nil {
+			vm.tryStack = make([]uint32, 0, 8)
+		}
+		vm.tryStack = append(vm.tryStack, inst.A)
+
+	case core.OpPopTry:
+		if vm.tryStack != nil && len(vm.tryStack) > 0 {
+			vm.tryStack = vm.tryStack[:len(vm.tryStack)-1]
+		}
+
+	case core.OpThrow:
+		a := vm.stack.Pop()
+		msg := valueToString(a)
+		return fmt.Errorf("throw: %s", msg)
+
 	default:
 		return fmt.Errorf("unimplemented opcode: %v", inst.Op)
 	}
@@ -330,6 +392,8 @@ func coreValueFromAny(v any) core.Value {
 		return core.Value{Kind: core.ValueNull}
 	}
 	switch val := v.(type) {
+	case core.Value:
+		return val
 	case bool:
 		return core.Value{Kind: core.ValueBool, Raw: val}
 	case int:
@@ -482,5 +546,83 @@ func isTruthy(val core.Value) bool {
 		return val.Raw.(string) != ""
 	default:
 		return true
+	}
+}
+
+func bitAndValues(a, b core.Value) core.Value {
+	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
+		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) & b.Raw.(int64)}
+	}
+	return core.Value{Kind: core.ValueNull}
+}
+
+func bitOrValues(a, b core.Value) core.Value {
+	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
+		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) | b.Raw.(int64)}
+	}
+	return core.Value{Kind: core.ValueNull}
+}
+
+func bitXorValues(a, b core.Value) core.Value {
+	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
+		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) ^ b.Raw.(int64)}
+	}
+	return core.Value{Kind: core.ValueNull}
+}
+
+func shlValues(a, b core.Value) core.Value {
+	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
+		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) << b.Raw.(int64)}
+	}
+	return core.Value{Kind: core.ValueNull}
+}
+
+func shrValues(a, b core.Value) core.Value {
+	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
+		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) >> b.Raw.(int64)}
+	}
+	return core.Value{Kind: core.ValueNull}
+}
+
+func typeOfValue(a core.Value) string {
+	switch a.Kind {
+	case core.ValueNull:
+		return "null"
+	case core.ValueBool:
+		return "boolean"
+	case core.ValueI64, core.ValueF64:
+		return "number"
+	case core.ValueString:
+		return "string"
+	case core.ValueArrayRef:
+		return "array"
+	case core.ValueObjectRef:
+		return "object"
+	case core.ValueFuncRef:
+		return "function"
+	case core.ValueHostHandle:
+		return "handle"
+	default:
+		return "unknown"
+	}
+}
+
+func valueToString(a core.Value) string {
+	switch a.Kind {
+	case core.ValueNull:
+		return "null"
+	case core.ValueBool:
+		if a.Raw.(bool) {
+			return "true"
+		}
+		return "false"
+	case core.ValueI64:
+		return fmt.Sprintf("%d", a.Raw.(int64))
+	case core.ValueF64:
+		return fmt.Sprintf("%v", a.Raw.(float64))
+	case core.ValueString:
+		return a.Raw.(string)
+	default:
+		return fmt.Sprintf("%v", a.Kind)
 	}
 }

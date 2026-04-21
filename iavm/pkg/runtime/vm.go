@@ -20,6 +20,7 @@ type VM struct {
 	handles       *HandleTable
 	frames        []*Frame
 	capabilityIDs map[uint32]string
+	tryStack      []uint32
 	startedAt     int64
 	stepCount     int64
 }

@@ -126,3 +126,54 @@ func TestLowerToModule_OpcodeMapping(t *testing.T) {
 		}
 	}
 }
+
+func TestLowerToModule_NewOpcodeMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		ialang   bytecode.OpCode
+		expected core.OpCode
+	}{
+		{"Dup", bytecode.OpDup, core.OpDup},
+		{"Pop", bytecode.OpPop, core.OpPop},
+		{"BitAnd", bytecode.OpBitAnd, core.OpBitAnd},
+		{"BitOr", bytecode.OpBitOr, core.OpBitOr},
+		{"BitXor", bytecode.OpBitXor, core.OpBitXor},
+		{"Shl", bytecode.OpShl, core.OpShl},
+		{"Shr", bytecode.OpShr, core.OpShr},
+		{"And", bytecode.OpAnd, core.OpAnd},
+		{"Or", bytecode.OpOr, core.OpOr},
+		{"Typeof", bytecode.OpTypeof, core.OpTypeof},
+		{"PushTry", bytecode.OpPushTry, core.OpPushTry},
+		{"PopTry", bytecode.OpPopTry, core.OpPopTry},
+		{"Throw", bytecode.OpThrow, core.OpThrow},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chunk := &bytecode.Chunk{
+				Code: []bytecode.Instruction{
+					{Op: bytecode.OpConstant, A: 0, B: 0},
+					{Op: bytecode.OpConstant, A: 0, B: 0},
+					{Op: tt.ialang},
+					{Op: bytecode.OpReturn},
+				},
+				Constants: []any{int64(42)},
+			}
+
+			mod, err := LowerToModule(chunk)
+			if err != nil {
+				t.Fatalf("LowerToModule failed: %v", err)
+			}
+
+			entryFn := mod.Functions[len(mod.Functions)-1]
+			if len(entryFn.Code) < 3 {
+				t.Fatalf("expected at least 3 instructions, got %d", len(entryFn.Code))
+			}
+
+			inst := entryFn.Code[2]
+			if inst.Op != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, inst.Op)
+			}
+		})
+	}
+}
