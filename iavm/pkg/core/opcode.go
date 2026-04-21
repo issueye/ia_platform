@@ -20,6 +20,7 @@ const (
 	OpGe
 	OpJump
 	OpJumpIfFalse
+	OpJumpIfTrue
 	OpCall
 	OpReturn
 	OpLoadLocal
@@ -48,4 +49,8 @@ const (
 	OpPopTry
 	OpIndex
 	OpThrow
+	OpTruthy
+	OpObjectKeys
+	OpJumpIfNullish
+	OpJumpIfNotNullish
 )

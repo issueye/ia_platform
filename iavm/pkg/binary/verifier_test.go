@@ -299,3 +299,54 @@ func TestVerifyModule_ValidControlFlow(t *testing.T) {
 		t.Fatalf("expected valid module, got errors: %v", result.Errors)
 	}
 }
+
+func TestVerifyModule_StackUnderflow(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpAdd}, // pop 2, push 1, but stack is empty
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for stack underflow")
+	}
+}
+
+func TestVerifyModule_StackOverflow(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: func() []core.Instruction {
+					code := make([]core.Instruction, 1026)
+					for i := range code {
+						code[i] = core.Instruction{Op: core.OpConst, A: 0}
+					}
+					code[len(code)-1] = core.Instruction{Op: core.OpReturn}
+					return code
+				}(),
+				Constants: []any{int64(1)},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for stack overflow")
+	}
+}

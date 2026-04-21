@@ -408,10 +408,8 @@ func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
 			iavmInst.A = uint32(inst.A)
 
 		case bytecode.OpJumpIfTrue:
-			// Not: jump_if_true = jump_if_false(not(val))
-			iavmInst.Op = core.OpNot
-			iavmInsts = append(iavmInsts, iavmInst)
-			iavmInst = core.Instruction{Op: core.OpJumpIfFalse, A: uint32(inst.A)}
+			iavmInst.Op = core.OpJumpIfTrue
+			iavmInst.A = uint32(inst.A)
 
 		case bytecode.OpCall:
 			// ialang's OpCall pops function from stack and calls it
@@ -469,9 +467,7 @@ func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
 			iavmInst.Op = core.OpDup
 
 		case bytecode.OpTruthy:
-			iavmInst.Op = core.OpNot
-			iavmInsts = append(iavmInsts, iavmInst)
-			iavmInst = core.Instruction{Op: core.OpNot}
+			iavmInst.Op = core.OpTruthy
 
 		case bytecode.OpAnd:
 			iavmInst.Op = core.OpAnd
@@ -524,12 +520,22 @@ func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
 		case bytecode.OpThrow:
 			iavmInst.Op = core.OpThrow
 
+		case bytecode.OpObjectKeys:
+			iavmInst.Op = core.OpObjectKeys
+
+		case bytecode.OpJumpIfNullish:
+			iavmInst.Op = core.OpJumpIfNullish
+			iavmInst.A = uint32(inst.A)
+
+		case bytecode.OpJumpIfNotNullish:
+			iavmInst.Op = core.OpJumpIfNotNullish
+			iavmInst.A = uint32(inst.A)
+
 		case bytecode.OpImportNamespace, bytecode.OpImportDynamic,
 			bytecode.OpExportName, bytecode.OpExportAs, bytecode.OpExportDefault,
 			bytecode.OpExportAll, bytecode.OpSuper, bytecode.OpSuperCall,
-			bytecode.OpObjectKeys, bytecode.OpSpreadArray,
-			bytecode.OpSpreadObject, bytecode.OpSpreadCall, bytecode.OpAwait,
-			bytecode.OpJumpIfNullish, bytecode.OpJumpIfNotNullish:
+			bytecode.OpSpreadArray, bytecode.OpSpreadObject, bytecode.OpSpreadCall,
+			bytecode.OpAwait:
 			// Unsupported in minimal iavm, use Nop
 			iavmInst.Op = core.OpNop
 

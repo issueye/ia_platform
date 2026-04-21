@@ -122,6 +122,10 @@ func verifyFunctions(m *module.Module) error {
 		if err := verifyConstantRefs(&fn); err != nil {
 			return fmt.Errorf("function[%d]: %w", i, err)
 		}
+
+		if err := verifyStackDepth(&fn); err != nil {
+			return fmt.Errorf("function[%d]: %w", i, err)
+		}
 	}
 	return nil
 }
@@ -134,7 +138,8 @@ func verifyControlFlow(fn *module.Function, m *module.Module) error {
 
 	for i, inst := range fn.Code {
 		switch inst.Op {
-		case core.OpJump, core.OpJumpIfFalse:
+		case core.OpJump, core.OpJumpIfFalse, core.OpJumpIfTrue,
+			core.OpJumpIfNullish, core.OpJumpIfNotNullish:
 			if int(inst.A) < 0 || int(inst.A) >= codeLen {
 				return fmt.Errorf("instruction[%d]: jump target %d out of range [0, %d)", i, inst.A, codeLen)
 			}
@@ -270,5 +275,84 @@ func isValidValueKind(kind core.ValueKind) bool {
 }
 
 func isValidOpcode(op core.OpCode) bool {
-	return op <= core.OpThrow
+	return op <= core.OpJumpIfNotNullish
+}
+
+func verifyStackDepth(fn *module.Function) error {
+	codeLen := len(fn.Code)
+	if codeLen == 0 {
+		return nil
+	}
+
+	depth := 0
+	maxDepth := 0
+	const maxAllowed = 1024
+
+	for i, inst := range fn.Code {
+		delta := stackDelta(inst)
+		if delta < 0 && depth < -delta {
+			return fmt.Errorf("instruction[%d]: stack underflow (need %d, have %d)", i, -delta, depth)
+		}
+		depth += delta
+		if depth > maxDepth {
+			maxDepth = depth
+		}
+		if maxDepth > maxAllowed {
+			return fmt.Errorf("instruction[%d]: max stack depth %d exceeds limit %d", i, maxDepth, maxAllowed)
+		}
+	}
+
+	return nil
+}
+
+func stackDelta(inst core.Instruction) int {
+	switch inst.Op {
+	case core.OpNop, core.OpJump, core.OpPushTry, core.OpPopTry,
+		core.OpReturn, core.OpThrow:
+		return 0
+
+	case core.OpConst, core.OpLoadLocal, core.OpLoadGlobal,
+		core.OpMakeObject, core.OpImportFunc, core.OpImportCap,
+		core.OpHostPoll, core.OpDup:
+		return 1
+
+	case core.OpStoreLocal, core.OpStoreGlobal, core.OpPop:
+		return -1
+
+	case core.OpAdd, core.OpSub, core.OpMul, core.OpDiv, core.OpMod,
+		core.OpEq, core.OpNe, core.OpLt, core.OpGt, core.OpLe, core.OpGe,
+		core.OpBitAnd, core.OpBitOr, core.OpBitXor, core.OpShl, core.OpShr,
+		core.OpAnd, core.OpOr, core.OpIndex:
+		return -1
+
+	case core.OpNeg, core.OpNot, core.OpTypeof, core.OpObjectKeys:
+		return 0
+
+	case core.OpJumpIfFalse, core.OpJumpIfTrue:
+		return -1
+
+	case core.OpJumpIfNullish, core.OpJumpIfNotNullish:
+		return 0
+
+	case core.OpCall:
+		if inst.B > 0 {
+			return -int(inst.B) + 1
+		}
+		return -int(inst.A)
+
+	case core.OpMakeArray:
+		return -int(inst.A) + 1
+
+	case core.OpGetProp:
+		return 0
+
+	case core.OpSetProp:
+		return -2
+
+	case core.OpHostCall:
+		return 0
+
+	default:
+		return 0
+	}
 }

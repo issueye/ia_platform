@@ -123,6 +123,10 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		a := vm.stack.Pop()
 		vm.stack.Push(notValue(a))
 
+	case core.OpTruthy:
+		a := vm.stack.Pop()
+		vm.stack.Push(core.Value{Kind: core.ValueBool, Raw: isTruthy(a)})
+
 	case core.OpEq:
 		b := vm.stack.Pop()
 		a := vm.stack.Pop()
@@ -159,6 +163,25 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 	case core.OpJumpIfFalse:
 		val := vm.stack.Pop()
 		if !isTruthy(val) {
+			frame.IP = inst.A
+		}
+
+	case core.OpJumpIfTrue:
+		val := vm.stack.Pop()
+		if isTruthy(val) {
+			frame.IP = inst.A
+		}
+
+	case core.OpJumpIfNullish:
+		val := vm.stack.Peek(0)
+		if val.Kind == core.ValueNull {
+			vm.stack.Pop()
+			frame.IP = inst.A
+		}
+
+	case core.OpJumpIfNotNullish:
+		val := vm.stack.Peek(0)
+		if val.Kind != core.ValueNull {
 			frame.IP = inst.A
 		}
 
@@ -383,6 +406,19 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 	case core.OpTypeof:
 		a := vm.stack.Pop()
 		vm.stack.Push(core.Value{Kind: core.ValueString, Raw: typeOfValue(a)})
+
+	case core.OpObjectKeys:
+		a := vm.stack.Pop()
+		if a.Kind != core.ValueObjectRef {
+			vm.stack.Push(core.Value{Kind: core.ValueArrayRef, Raw: []core.Value{}})
+		} else {
+			m := a.Raw.(map[string]core.Value)
+			keys := make([]core.Value, 0, len(m))
+			for k := range m {
+				keys = append(keys, core.Value{Kind: core.ValueString, Raw: k})
+			}
+			vm.stack.Push(core.Value{Kind: core.ValueArrayRef, Raw: keys})
+		}
 
 	case core.OpPushTry:
 		if vm.tryStack == nil {
