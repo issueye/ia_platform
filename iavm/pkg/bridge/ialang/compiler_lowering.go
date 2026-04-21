@@ -49,6 +49,7 @@ func LowerToModule(input any) (*module.Module, error) {
 	mod.Functions = append(mod.Functions, entryFunc)
 
 	// Add exports for named functions
+	exportSet := make(map[string]struct{})
 	for i, c := range chunk.Constants {
 		if ft, ok := c.(*bytecode.FunctionTemplate); ok {
 			if ft.Name != "" {
@@ -57,6 +58,27 @@ func LowerToModule(input any) (*module.Module, error) {
 					Kind:  module.ExportFunction,
 					Index: uint32(funcIndexMap[i]),
 				})
+				exportSet[ft.Name] = struct{}{}
+			}
+		}
+	}
+
+	// Add exports for global variables (OpExportName in top-level chunk)
+	for _, inst := range chunk.Code {
+		if inst.Op == bytecode.OpExportName {
+			if int(inst.A) < len(chunk.Constants) {
+				if name, ok := chunk.Constants[inst.A].(string); ok {
+					if _, alreadyExported := exportSet[name]; !alreadyExported {
+						if idx, exists := globalNames[name]; exists {
+							mod.Exports = append(mod.Exports, module.Export{
+								Name:  name,
+								Kind:  module.ExportGlobal,
+								Index: uint32(idx),
+							})
+							exportSet[name] = struct{}{}
+						}
+					}
+				}
 			}
 		}
 	}

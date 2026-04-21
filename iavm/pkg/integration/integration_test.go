@@ -644,6 +644,46 @@ func TestFullPipeline_TryCatchExceptionValue(t *testing.T) {
 	}
 }
 
+func TestFullPipeline_ExportedGlobalVariable(t *testing.T) {
+	// let x = 42; export x;
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpConstant, A: 0, B: 0}, // push 42
+			{Op: bytecode.OpDefineName, A: 1, B: 0}, // define x
+			{Op: bytecode.OpExportName, A: 1, B: 0}, // export x
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{float64(42), "x"},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	// Verify exports include global x
+	if len(mod.Exports) != 1 {
+		t.Fatalf("expected 1 export, got %d", len(mod.Exports))
+	}
+	if mod.Exports[0].Name != "x" {
+		t.Fatalf("expected export name 'x', got %q", mod.Exports[0].Name)
+	}
+	if mod.Exports[0].Kind != module.ExportGlobal {
+		t.Fatalf("expected ExportGlobal, got %v", mod.Exports[0].Kind)
+	}
+
+	// Run VM
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+}
+
 func TestFullPipeline_FunctionExpression(t *testing.T) {
 	// let f = function() { return 42; }; return f();
 	chunk := &bytecode.Chunk{

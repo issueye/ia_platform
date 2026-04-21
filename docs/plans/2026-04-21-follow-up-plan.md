@@ -14,12 +14,15 @@
 | Verifier 栈深度分析 | ✅ | 新增 verifyStackDepth，检测栈欠流和溢出，附带测试 |
 | 集成测试增强 | ✅ | 新增 IfElse、WhileLoop、ObjectPropertyAccess 端到端测试 |
 | Interpreter 常量回退 | ✅ | OpGetProp/OpSetProp 支持 module-level 常量回退（配合 buildModuleConstantPool） |
+| Try-Catch 异常恢复 | ✅ | 新增 OpPushTry/OpPopTry/OpThrow，interpreter 实现 try-catch 机制 |
+| OpClosure 实现 | ✅ | 新增 OpClosure opcode，支持函数表达式 lowering 和 runtime |
+| 全局变量导出 | ✅ | LowerToModule 提取 OpExportName 到 module.Exports（ExportGlobal） |
 
 ### 1.2 测试状态
 
 所有测试通过，无回归：
 - `ialang/...`：全部 PASS
-- `iavm/...`：全部 PASS（binary 25 测试, bridge 19 测试, integration 10 测试, runtime 38 测试）
+- `iavm/...`：全部 PASS（binary 25 测试, bridge 19 测试, integration 11 测试, runtime 38 测试）
 - `iacommon/...`：全部 PASS
 
 ---
@@ -68,9 +71,9 @@
 
 ## 4. 已知限制（本轮未改变）
 
-1. **Closure 不完整**：仍保持当前降级策略，本轮不实现 upvalue 捕获
+1. **Closure upvalue 不完整**：OpClosure 仅加载函数引用，未实现真正的局部变量 upvalue 捕获
 2. **类/继承未实现**：`OpClass`、`OpNew`、`OpSuper` 保持降级
-3. **模块导入导出**：`ImportNamespace`/`ExportAll` 等保持降级
+3. **模块导入导出不完整**：`ImportNamespace`/`ExportAll`/`ExportAs`/`ExportDefault` 保持降级
 4. **异步未实现**：`OpAwait` 保持降级
 5. **Spread 操作**：保持降级
 6. **嵌套函数调用**：lowerFunction 中函数引用处理仅限 entry 函数，内层函数通过 globalNames 访问（非函数引用）
@@ -82,7 +85,10 @@
 - [x] OpObjectKeys lowering + runtime + 测试全部完成
 - [x] JumpIfNullish / JumpIfNotNullish lowering + runtime + 测试全部完成
 - [x] Verifier 栈深度分析实现并附带测试
-- [x] 端到端集成测试增强（IfElse/WhileLoop/ObjectPropertyAccess）
+- [x] 端到端集成测试增强（IfElse/WhileLoop/ObjectPropertyAccess/TryCatch/FunctionExpression）
+- [x] Try-Catch 异常恢复机制实现
+- [x] OpClosure 函数表达式支持
+- [x] 全局变量导出（ExportGlobal）提取
 - [x] 所有 iavm 测试 PASS
 - [x] 所有 ialang 测试 PASS（无回归）
 
@@ -94,9 +100,12 @@
 2. `feat(iavm): add OpObjectKeys, OpJumpIfNullish, OpJumpIfNotNullish opcodes with verifier stack depth analysis`
 3. `docs: add follow-up development plan for iavm platform`
 4. `feat(iavm): add integration tests for if/else, while loop, object property access`
+5. `feat(iavm): implement try-catch exception recovery with PushTry/PopTry/Throw`
+6. `feat(iavm): add OpClosure support for function expressions`
+7. `feat(iavm): extract global variable exports from OpExportName in lowering`
 
 ---
 
 *计划生成时间: 2026-04-21*
-*版本: v1.1*
-*状态: 全部完成*
+*版本: v1.2*
+*状态: 全部完成（含后续轮次追加）*
