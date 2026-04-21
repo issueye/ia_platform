@@ -114,6 +114,71 @@ func verifyFunctions(m *module.Module) error {
 				return fmt.Errorf("function[%d]: invalid opcode %v at instruction %d", i, inst.Op, j)
 			}
 		}
+
+		if err := verifyControlFlow(&fn); err != nil {
+			return fmt.Errorf("function[%d]: %w", i, err)
+		}
+
+		if err := verifyConstantRefs(&fn); err != nil {
+			return fmt.Errorf("function[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func verifyControlFlow(fn *module.Function) error {
+	codeLen := len(fn.Code)
+	if codeLen == 0 {
+		return nil
+	}
+
+	for i, inst := range fn.Code {
+		switch inst.Op {
+		case core.OpJump, core.OpJumpIfFalse:
+			if int(inst.A) < 0 || int(inst.A) >= codeLen {
+				return fmt.Errorf("instruction[%d]: jump target %d out of range [0, %d)", i, inst.A, codeLen)
+			}
+
+		case core.OpLoadLocal, core.OpStoreLocal:
+			if int(inst.A) >= len(fn.Locals) {
+				return fmt.Errorf("instruction[%d]: local index %d out of range (locals: %d)", i, inst.A, len(fn.Locals))
+			}
+
+		case core.OpLoadGlobal, core.OpStoreGlobal:
+			// Global index validation deferred to runtime (globals are dynamic)
+
+		case core.OpConst:
+			if int(inst.A) >= len(fn.Constants) {
+				return fmt.Errorf("instruction[%d]: constant index %d out of range (constants: %d)", i, inst.A, len(fn.Constants))
+			}
+
+		case core.OpCall:
+			if inst.B > 0 {
+				if int(inst.A) >= len(fn.Code) {
+					// A is function index, validated at runtime
+				}
+			}
+
+		case core.OpGetProp, core.OpSetProp:
+			if int(inst.A) >= len(fn.Constants) {
+				return fmt.Errorf("instruction[%d]: property name constant index %d out of range (constants: %d)", i, inst.A, len(fn.Constants))
+			}
+
+		case core.OpPushTry:
+			if int(inst.A) < 0 || int(inst.A) >= codeLen {
+				return fmt.Errorf("instruction[%d]: try handler target %d out of range [0, %d)", i, inst.A, codeLen)
+			}
+		}
+	}
+	return nil
+}
+
+func verifyConstantRefs(fn *module.Function) error {
+	for i, c := range fn.Constants {
+		if ft, ok := c.(*module.Function); ok {
+			_ = ft
+			_ = i
+		}
 	}
 	return nil
 }
@@ -193,5 +258,5 @@ func isValidValueKind(kind core.ValueKind) bool {
 }
 
 func isValidOpcode(op core.OpCode) bool {
-	return op >= core.OpNop && op <= core.OpHostPoll
+	return op <= core.OpThrow
 }

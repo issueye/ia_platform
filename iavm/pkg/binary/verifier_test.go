@@ -174,3 +174,128 @@ func TestVerifyModule_RequireEntry_WithMain(t *testing.T) {
 		t.Fatal("expected valid module with main function")
 	}
 }
+
+func TestVerifyModule_InvalidJumpTarget(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "test",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpJump, A: 100},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for invalid jump target")
+	}
+}
+
+func TestVerifyModule_InvalidLocalIndex(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "test",
+				TypeIndex: 0,
+				Locals:    []core.ValueKind{core.ValueNull},
+				Code: []core.Instruction{
+					{Op: core.OpLoadLocal, A: 5},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for invalid local index")
+	}
+}
+
+func TestVerifyModule_InvalidConstantIndex(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "test",
+				TypeIndex: 0,
+				Constants: []any{int64(1)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 10},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for invalid constant index")
+	}
+}
+
+func TestVerifyModule_InvalidTryHandlerTarget(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "test",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpPushTry, A: 99},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for invalid try handler target")
+	}
+}
+
+func TestVerifyModule_ValidControlFlow(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "test",
+				TypeIndex: 0,
+				Locals:    []core.ValueKind{core.ValueI64},
+				Constants: []any{int64(42)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpStoreLocal, A: 0},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpJump, A: 3},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	result, err := VerifyModule(mod, VerifyOptions{})
+	if err != nil {
+		t.Fatalf("VerifyModule failed: %v", err)
+	}
+	if !result.Valid {
+		t.Fatalf("expected valid module, got errors: %v", result.Errors)
+	}
+}
