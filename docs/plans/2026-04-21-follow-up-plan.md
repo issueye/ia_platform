@@ -1,6 +1,6 @@
 # IAVM 平台化后续开发计划（2026-04-21 续）
 
-## 1. 当前状态（截至本轮完成）
+## 1. 当前状态（本轮全部完成）
 
 ### 1.1 已完成工作
 
@@ -9,121 +9,94 @@
 | 修复 ialang/pkg/lang 测试构建失败 | ✅ | 新建 helpers_test.go，补齐 compileTestSource/itoaTest/createTestVM/runVMTestNoError/runVMTestExpectError |
 | OpTruthy 独立 opcode | ✅ | 新增 OpTruthy，替代 OpNot;OpNot 模拟，更新 lowering 映射和测试 |
 | OpJumpIfTrue 独立 opcode | ✅ | 新增 OpJumpIfTrue，替代 OpNot;OpJumpIfFalse 模拟，更新 lowering 映射和测试 |
+| OpObjectKeys 实现 | ✅ | 新增 OpObjectKeys opcode，interpreter 实现，lowering 映射，测试覆盖 |
+| JumpIfNullish/NotNullish 实现 | ✅ | 新增两个 opcode，interpreter 实现（peek+conditional pop），lowering 映射，测试覆盖 |
+| Verifier 栈深度分析 | ✅ | 新增 verifyStackDepth，检测栈欠流和溢出，附带测试 |
+| 集成测试增强 | ✅ | 新增 IfElse、WhileLoop、ObjectPropertyAccess 端到端测试 |
+| Interpreter 常量回退 | ✅ | OpGetProp/OpSetProp 支持 module-level 常量回退（配合 buildModuleConstantPool） |
 
 ### 1.2 测试状态
 
 所有测试通过，无回归：
 - `ialang/...`：全部 PASS
-- `iavm/...`：全部 PASS（binary 23 测试, bridge 19 测试, integration 7 测试, runtime 32 测试）
+- `iavm/...`：全部 PASS（binary 25 测试, bridge 19 测试, integration 10 测试, runtime 38 测试）
 - `iacommon/...`：全部 PASS
 
 ---
 
-## 2. 后续工作计划
+## 2. 已完成工作详情
 
-### Phase 2A: Opcode 映射补全（本轮）
+### Phase 2A: Opcode 映射补全 ✅
 
-#### P1: 实现 OpObjectKeys
-**目标**：补全 `OpObjectKeys` 的 lowering 映射和 runtime 实现，支持 `for...in` 循环 lowering 后的执行。
+| 任务 | 状态 | 关键文件 |
+|---|---|---|
+| OpObjectKeys | ✅ | `iavm/pkg/core/opcode.go`, `interpreter.go`, `compiler_lowering.go` |
+| JumpIfNullish/NotNullish | ✅ | `iavm/pkg/core/opcode.go`, `interpreter.go`, `compiler_lowering.go`, `verifier.go` |
 
-**理由**：ialang 编译器对 `for (k in obj)` 会生成 `OpObjectKeys` + 迭代逻辑，当前降级为 Nop 导致 for-in 在 iavm 中无法工作。
+**Opcode 映射更新**：ialang → iavm 映射从 44/68 提升到 47/68（~69%）
 
-**关键文件**：
-- `iavm/pkg/core/opcode.go` — 确认 OpObjectKeys 是否已定义（若未定义则添加）
-- `iavm/pkg/runtime/interpreter.go` — 实现 OpObjectKeys dispatch
-- `iavm/pkg/bridge/ialang/compiler_lowering.go` — 解除 Nop 降级，建立映射
-- `iavm/pkg/binary/verifier.go` — 增加跳转目标校验中的 OpJumpIfTrue 分支
+### Phase 2B: Verifier 安全增强 ✅
 
-**验收标准**：
-- [ ] lowering 映射将 ialang `OpObjectKeys` 映射到 iavm 对应 opcode
-- [ ] interpreter 能正确弹出 object 并压入 key 数组
-- [ ] 新增 interpreter 单元测试覆盖 OpObjectKeys
-- [ ] verifier 控制流分析包含 OpJumpIfTrue
+| 任务 | 状态 | 关键文件 |
+|---|---|---|
+| 栈深度分析 | ✅ | `iavm/pkg/binary/verifier.go`, `verifier_test.go` |
 
-#### P1: 实现 JumpIfNullish / JumpIfNotNullish
-**目标**：补全可选链操作符 (`?.`) 相关的跳转 opcode。
+**实现方案**：线性扫描每条指令，计算 stackDelta，检测 underflow（深度<0）和 overflow（深度>1024）。
 
-**理由**：ialang 支持 `a?.b?.c` 可选链语法，编译器会生成 `OpJumpIfNullish` 或 `OpJumpIfNotNullish`。
+### Phase 2C: 集成测试增强 ✅
 
-**关键文件**：
-- `iavm/pkg/core/opcode.go` — 添加 OpJumpIfNullish, OpJumpIfNotNullish
-- `iavm/pkg/runtime/interpreter.go` — 实现 dispatch 逻辑
-- `iavm/pkg/bridge/ialang/compiler_lowering.go` — 建立映射
-- `iavm/pkg/binary/verifier.go` — 控制流校验包含新 opcode
+| 场景 | 状态 | 说明 |
+|---|---|---|
+| IfElse | ✅ | 条件分支 lowering + 执行 |
+| WhileLoop | ✅ | while 循环 lowering + 执行（向后跳转） |
+| ObjectPropertyAccess | ✅ | 对象创建/属性设置/属性获取 lowering + 执行 |
 
-**验收标准**：
-- [ ] 新增两个 opcode 定义
-- [ ] interpreter 正确实现 nullish 判断语义（null/undefined 视为 nullish，iavm 中只有 null）
-- [ ] lowering 解除 Nop 降级
-- [ ] 新增 interpreter 单元测试
-
-### Phase 2B: Verifier 安全增强（本轮）
-
-#### P1: 栈深度分析
-**目标**：在 verifier 中增加每个函数的栈深度边界检查，防止恶意模块通过过度 push 导致栈溢出。
-
-**理由**：平台化安全基线。当前 verifier 只检查 jump target 和 local index，没有栈操作安全分析。
-
-**关键文件**：
-- `iavm/pkg/binary/verifier.go` — 新增 `verifyStackDepth` 函数
-- `iavm/pkg/binary/verifier_test.go` — 新增测试
-
-**实现思路**：
-1. 对每条指令分析其对栈的影响（push +N, pop -M, 净变化 delta）
-2. 模拟执行每个基本块，记录最大栈深度和最小栈深度（不能为负）
-3. 报告栈欠流（underflow）和栈溢出（overflow）风险
-
-**验收标准**：
-- [ ] 合法模块通过栈深度验证
-- [ ] 栈欠流模块（如连续 pop）被检测并报告错误
-- [ ] 栈深度超限模块（如无限循环 push）被检测
-
-### Phase 2C: 集成测试增强（本轮）
-
-#### P2: 端到端 lowering + 执行测试
-**目标**：增加更多从 ialang chunk → iavm module → execute 的完整链路测试。
-
-**场景**：
-- [ ] 循环 lowering + 执行（while/for）
-- [ ] 条件分支 lowering + 执行（if/else）
-- [ ] 嵌套函数调用 lowering + 执行
-- [ ] 对象属性访问 lowering + 执行
-
-**关键文件**：
-- `iavm/pkg/integration/integration_test.go`
+**Bug 修复**：`interpreter.go` 中 `OpGetProp`/`OpSetProp` 增加对 `module.Constants` 的回退支持（当 `buildModuleConstantPool` 清空函数级常量后）。
 
 ---
 
-## 3. 本轮任务优先级
+## 3. 本轮任务优先级（回顾）
 
-| 优先级 | 任务 | 预计工作量 | 阻塞关系 |
+| 优先级 | 任务 | 预计工作量 | 实际完成 |
 |---|---|---|---|
-| P1 | OpObjectKeys 实现 | 小 | 无 |
-| P1 | JumpIfNullish/NotNullish 实现 | 小 | 无 |
-| P1 | Verifier 栈深度分析 | 中 | 无 |
-| P2 | 端到端集成测试增强 | 中 | 依赖 ObjectKeys |
+| P1 | OpObjectKeys 实现 | 小 | ✅ |
+| P1 | JumpIfNullish/NotNullish 实现 | 小 | ✅ |
+| P1 | Verifier 栈深度分析 | 中 | ✅ |
+| P2 | 端到端集成测试增强 | 中 | ✅ |
 
 ---
 
-## 4. 已知限制（本轮不改变）
+## 4. 已知限制（本轮未改变）
 
 1. **Closure 不完整**：仍保持当前降级策略，本轮不实现 upvalue 捕获
 2. **类/继承未实现**：`OpClass`、`OpNew`、`OpSuper` 保持降级
 3. **模块导入导出**：`ImportNamespace`/`ExportAll` 等保持降级
 4. **异步未实现**：`OpAwait` 保持降级
 5. **Spread 操作**：保持降级
+6. **嵌套函数调用**：lowerFunction 中函数引用处理仅限 entry 函数，内层函数通过 globalNames 访问（非函数引用）
 
 ---
 
 ## 5. 验收标准
 
-- [ ] OpObjectKeys lowering + runtime + 测试全部完成
-- [ ] JumpIfNullish / JumpIfNotNullish lowering + runtime + 测试全部完成
-- [ ] Verifier 栈深度分析实现并附带测试
-- [ ] 所有 iavm 测试 PASS
-- [ ] 所有 ialang 测试 PASS（无回归）
+- [x] OpObjectKeys lowering + runtime + 测试全部完成
+- [x] JumpIfNullish / JumpIfNotNullish lowering + runtime + 测试全部完成
+- [x] Verifier 栈深度分析实现并附带测试
+- [x] 端到端集成测试增强（IfElse/WhileLoop/ObjectPropertyAccess）
+- [x] 所有 iavm 测试 PASS
+- [x] 所有 ialang 测试 PASS（无回归）
+
+---
+
+## 6. 提交记录（本轮）
+
+1. `fix(ialang): add missing test helper functions for lang package`
+2. `feat(iavm): add OpObjectKeys, OpJumpIfNullish, OpJumpIfNotNullish opcodes with verifier stack depth analysis`
+3. `docs: add follow-up development plan for iavm platform`
+4. `feat(iavm): add integration tests for if/else, while loop, object property access`
 
 ---
 
 *计划生成时间: 2026-04-21*
 *版本: v1.1*
+*状态: 全部完成*
