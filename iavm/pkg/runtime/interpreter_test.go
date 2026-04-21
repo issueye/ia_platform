@@ -304,6 +304,55 @@ func TestInterpret_FunctionCall(t *testing.T) {
 	}
 }
 
+func TestInterpret_FunctionCallStackBased(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}, {}},
+		Functions: []module.Function{
+			{
+				Name:      "add",
+				TypeIndex: 0,
+				Locals:    []core.ValueKind{core.ValueNull, core.ValueNull, core.ValueNull},
+				Code: []core.Instruction{
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpLoadLocal, A: 1},
+					{Op: core.OpAdd},
+					{Op: core.OpReturn},
+				},
+			},
+			{
+				Name:      "entry",
+				TypeIndex: 1,
+				Constants: []any{int64(0), int64(3), int64(4)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},       // push function index 0
+					{Op: core.OpConst, A: 1},       // push arg 3
+					{Op: core.OpConst, A: 2},       // push arg 4
+					{Op: core.OpCall, A: 2, B: 0},  // stack-based call add(3,4)
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 7 {
+		t.Fatalf("expected 7, got %v", val)
+	}
+}
+
 func TestInterpret_MakeArray(t *testing.T) {
 	mod := &module.Module{
 		Magic:   "IAVM",
@@ -707,5 +756,122 @@ func TestInterpret_Throw(t *testing.T) {
 	err = vm.Run()
 	if err == nil {
 		t.Fatal("expected error from throw, got nil")
+	}
+}
+
+func TestInterpret_IndexArray(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{int64(1), int64(2), int64(3), int64(1)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpMakeArray, A: 3},
+					{Op: core.OpConst, A: 3},
+					{Op: core.OpIndex},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 2 {
+		t.Fatalf("expected 2, got %v", val)
+	}
+}
+
+func TestInterpret_IndexObject(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"x", int64(42)},
+				Code: []core.Instruction{
+					{Op: core.OpMakeObject},
+					{Op: core.OpDup},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpSetProp, A: 0},
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpIndex},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 42 {
+		t.Fatalf("expected 42, got %v", val)
+	}
+}
+
+func TestInterpret_IndexString(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"hello", int64(1)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpIndex},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueString || val.Raw.(string) != "e" {
+		t.Fatalf("expected 'e', got %v", val)
 	}
 }

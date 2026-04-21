@@ -170,7 +170,17 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			}
 			vm.frames = append(vm.frames, newFrame)
 		} else {
-			// Stack-based call: function on stack, A = arg count
+			// Stack-based call: function is UNDER args on stack
+			// Stack layout: [..., function, arg1, arg2, ...]
+			argCount := int(inst.A)
+
+			// Pop args first
+			args := make([]core.Value, argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				args[i] = vm.stack.Pop()
+			}
+
+			// Now pop function reference
 			fnRef := vm.stack.Pop()
 			var fnIdx uint32
 			switch fnRef.Kind {
@@ -185,11 +195,6 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 				if !ok {
 					return fmt.Errorf("builtin function not found: %s", name)
 				}
-				argCount := int(inst.A)
-				args := make([]core.Value, argCount)
-				for i := argCount - 1; i >= 0; i-- {
-					args[i] = vm.stack.Pop()
-				}
 				result := builtin(args)
 				vm.stack.Push(result)
 				return nil
@@ -201,10 +206,9 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			}
 			targetFn := &vm.mod.Functions[fnIdx]
 			newFrame := NewFrame(fnIdx, targetFn, uint32(vm.stack.Size()))
-			argCount := int(inst.A)
-			for i := argCount - 1; i >= 0; i-- {
+			for i := 0; i < argCount; i++ {
 				if i < len(newFrame.Locals) {
-					newFrame.Locals[i] = vm.stack.Pop()
+					newFrame.Locals[i] = args[i]
 				}
 			}
 			vm.frames = append(vm.frames, newFrame)
@@ -380,6 +384,47 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 	case core.OpPopTry:
 		if vm.tryStack != nil && len(vm.tryStack) > 0 {
 			vm.tryStack = vm.tryStack[:len(vm.tryStack)-1]
+		}
+
+	case core.OpIndex:
+		indexVal := vm.stack.Pop()
+		targetVal := vm.stack.Pop()
+		switch targetVal.Kind {
+		case core.ValueArrayRef:
+			if indexVal.Kind != core.ValueI64 {
+				return fmt.Errorf("array index must be integer, got %v", indexVal.Kind)
+			}
+			idx := int(indexVal.Raw.(int64))
+			arr := targetVal.Raw.([]core.Value)
+			if idx < 0 || idx >= len(arr) {
+				vm.stack.Push(core.Value{Kind: core.ValueNull})
+			} else {
+				vm.stack.Push(arr[idx])
+			}
+		case core.ValueObjectRef:
+			if indexVal.Kind != core.ValueString {
+				return fmt.Errorf("object index must be string, got %v", indexVal.Kind)
+			}
+			key := indexVal.Raw.(string)
+			m := targetVal.Raw.(map[string]core.Value)
+			if val, ok := m[key]; ok {
+				vm.stack.Push(val)
+			} else {
+				vm.stack.Push(core.Value{Kind: core.ValueNull})
+			}
+		case core.ValueString:
+			if indexVal.Kind != core.ValueI64 {
+				return fmt.Errorf("string index must be integer, got %v", indexVal.Kind)
+			}
+			idx := int(indexVal.Raw.(int64))
+			s := targetVal.Raw.(string)
+			if idx < 0 || idx >= len(s) {
+				vm.stack.Push(core.Value{Kind: core.ValueNull})
+			} else {
+				vm.stack.Push(core.Value{Kind: core.ValueString, Raw: string(s[idx])})
+			}
+		default:
+			return fmt.Errorf("index operator not supported on %v", targetVal.Kind)
 		}
 
 	case core.OpThrow:

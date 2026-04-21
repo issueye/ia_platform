@@ -27,8 +27,8 @@ func TestBuiltinPrint(t *testing.T) {
 		Name:      "main",
 		Constants: []any{"print", "hello", 42},
 		Code: []core.Instruction{
-			{Op: core.OpConst, A: 1},          // push "hello"
 			{Op: core.OpConst, A: 0},          // push "print"
+			{Op: core.OpConst, A: 1},          // push "hello"
 			{Op: core.OpCall, A: 1, B: 0},     // call print("hello")
 			{Op:  core.OpReturn},
 		},
@@ -63,9 +63,9 @@ func TestBuiltinPrintMultipleArgs(t *testing.T) {
 		Name:      "main",
 		Constants: []any{"print", "hello", int64(42)},
 		Code: []core.Instruction{
-			{Op: core.OpConst, A: 2},          // push 42
-			{Op: core.OpConst, A: 1},          // push "hello"
 			{Op: core.OpConst, A: 0},          // push "print"
+			{Op: core.OpConst, A: 1},          // push "hello"
+			{Op: core.OpConst, A: 2},          // push 42
 			{Op: core.OpCall, A: 2, B: 0},     // call print("hello", 42)
 			{Op:  core.OpReturn},
 		},
@@ -86,7 +86,7 @@ func TestBuiltinPrintMultipleArgs(t *testing.T) {
 	io.Copy(&buf, r)
 	output := buf.String()
 
-	expected := "42 hello\n"
+	expected := "hello 42\n"
 	if output != expected {
 		t.Errorf("expected %q, got %q", expected, output)
 	}
@@ -103,8 +103,8 @@ func TestBuiltinLen(t *testing.T) {
 			name:   "string length",
 			consts: []any{"len", "hello"},
 			code: []core.Instruction{
-				{Op: core.OpConst, A: 1},          // push "hello"
 				{Op: core.OpConst, A: 0},          // push "len"
+				{Op: core.OpConst, A: 1},          // push "hello"
 				{Op: core.OpCall, A: 1, B: 0},     // call len("hello")
 				{Op:  core.OpReturn},
 			},
@@ -114,8 +114,8 @@ func TestBuiltinLen(t *testing.T) {
 			name:   "empty string",
 			consts: []any{"len", ""},
 			code: []core.Instruction{
-				{Op: core.OpConst, A: 1},
 				{Op: core.OpConst, A: 0},
+				{Op: core.OpConst, A: 1},
 				{Op: core.OpCall, A: 1, B: 0},
 				{Op:  core.OpReturn},
 			},
@@ -162,13 +162,13 @@ func TestBuiltinLen(t *testing.T) {
 func TestBuiltinLenArray(t *testing.T) {
 	vm, err := newTestVM([]module.Function{{
 		Name:      "main",
-		Constants: []any{"len"},
+		Constants: []any{int64(1), int64(2), int64(3), "len"},
 		Code: []core.Instruction{
+			{Op: core.OpConst, A: 3},            // push "len"
 			{Op: core.OpConst, A: 0},            // push 1
-			{Op: core.OpConst, A: 0},            // push 2
-			{Op: core.OpConst, A: 0},            // push 3
+			{Op: core.OpConst, A: 1},            // push 2
+			{Op: core.OpConst, A: 2},            // push 3
 			{Op: core.OpMakeArray, A: 3},        // make array [1, 2, 3]
-			{Op: core.OpConst, A: 0},            // push "len"
 			{Op: core.OpCall, A: 1, B: 0},       // call len([1,2,3])
 			{Op:  core.OpReturn},
 		},
@@ -229,7 +229,8 @@ func TestBuiltinTypeof(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			code := append(tt.setup, core.Instruction{Op: core.OpConst, A: 0})
+			code := []core.Instruction{{Op: core.OpConst, A: 0}}
+			code = append(code, tt.setup...)
 			code = append(code, core.Instruction{Op: core.OpCall, A: 1, B: 0})
 			code = append(code, core.Instruction{Op: core.OpReturn})
 
@@ -302,7 +303,8 @@ func TestBuiltinStr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			code := append(tt.setup, core.Instruction{Op: core.OpConst, A: 0})
+			code := []core.Instruction{{Op: core.OpConst, A: 0}}
+			code = append(code, tt.setup...)
 			code = append(code, core.Instruction{Op: core.OpCall, A: 1, B: 0})
 			code = append(code, core.Instruction{Op: core.OpReturn})
 
@@ -373,7 +375,8 @@ func TestBuiltinInt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			code := append(tt.setup, core.Instruction{Op: core.OpConst, A: 0})
+			code := []core.Instruction{{Op: core.OpConst, A: 0}}
+			code = append(code, tt.setup...)
 			code = append(code, core.Instruction{Op: core.OpCall, A: 1, B: 0})
 			code = append(code, core.Instruction{Op: core.OpReturn})
 
@@ -444,7 +447,8 @@ func TestBuiltinFloat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			code := append(tt.setup, core.Instruction{Op: core.OpConst, A: 0})
+			code := []core.Instruction{{Op: core.OpConst, A: 0}}
+			code = append(code, tt.setup...)
 			code = append(code, core.Instruction{Op: core.OpCall, A: 1, B: 0})
 			code = append(code, core.Instruction{Op: core.OpReturn})
 
@@ -531,10 +535,10 @@ func TestBuiltinChainedCalls(t *testing.T) {
 		Name:      "main",
 		Constants: []any{"typeof", "str", int64(42)},
 		Code: []core.Instruction{
-			{Op: core.OpConst, A: 2},          // push 42
-			{Op: core.OpConst, A: 1},          // push "str"
-			{Op: core.OpCall, A: 1, B: 0},     // call str(42) -> "42"
 			{Op: core.OpConst, A: 0},          // push "typeof"
+			{Op: core.OpConst, A: 1},          // push "str"
+			{Op: core.OpConst, A: 2},          // push 42
+			{Op: core.OpCall, A: 1, B: 0},     // call str(42) -> "42" on stack
 			{Op: core.OpCall, A: 1, B: 0},     // call typeof("42") -> "string"
 			{Op:  core.OpReturn},
 		},

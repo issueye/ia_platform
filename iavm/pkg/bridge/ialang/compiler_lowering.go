@@ -31,15 +31,20 @@ func LowerToModule(input any) (*module.Module, error) {
 
 	// First pass: collect all function templates and build index map
 	funcIndexMap := make(map[int]int)
+	globalNames := collectGlobalNames(chunk)
 	for i, c := range chunk.Constants {
 		if ft, ok := c.(*bytecode.FunctionTemplate); ok {
 			funcIndexMap[i] = len(mod.Functions)
-			mod.Functions = append(mod.Functions, lowerFunction(ft))
+			fn := lowerFunction(ft, globalNames)
+			mod.Functions = append(mod.Functions, fn)
 		}
 	}
 
-	// Create entry function from top-level chunk
-	entryFunc := lowerChunkAsFunction(chunk, "entry")
+	// Collect global names from the chunk
+	globalNames = collectGlobalNames(chunk)
+
+	// Create entry function from top-level chunk with global remapping
+	entryFunc := lowerChunkAsFunctionWithGlobals(chunk, "entry", globalNames, funcIndexMap)
 	entryFunc.IsEntryPoint = true
 	mod.Functions = append(mod.Functions, entryFunc)
 
@@ -59,25 +64,88 @@ func LowerToModule(input any) (*module.Module, error) {
 	return mod, nil
 }
 
-func lowerFunction(ft *bytecode.FunctionTemplate) module.Function {
+func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32) module.Function {
 	fn := module.Function{
 		Name:      ft.Name,
 		TypeIndex: 0,
 	}
 
-	// Lower locals: params + implicit self slot
-	totalLocals := len(ft.Params) + 1
-	if ft.RestParam != "" {
-		totalLocals++
+	// Build local variable map for function parameters and locals
+	localMap := make(map[string]uint32)
+	var nextLocalIdx uint32 = 0 // parameters start at local 0 (no implicit self for regular functions)
+
+	// Map parameters to local indices
+	for _, param := range ft.Params {
+		localMap[param] = nextLocalIdx
+		nextLocalIdx++
 	}
+	if ft.RestParam != "" {
+		localMap[ft.RestParam] = nextLocalIdx
+		nextLocalIdx++
+	}
+
+	// Scan function code to find local variable definitions (OpDefineName inside function)
+	if ft.Chunk != nil {
+		for _, inst := range ft.Chunk.Code {
+			if inst.Op == bytecode.OpDefineName {
+				if int(inst.A) < len(ft.Chunk.Constants) {
+					if name, ok := ft.Chunk.Constants[inst.A].(string); ok {
+						if _, exists := localMap[name]; !exists {
+							localMap[name] = nextLocalIdx
+							nextLocalIdx++
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Allocate locals
+	totalLocals := int(nextLocalIdx)
 	for i := 0; i < totalLocals; i++ {
 		fn.Locals = append(fn.Locals, core.ValueNull)
 	}
 
 	// Lower constants from chunk
 	if ft.Chunk != nil {
-		fn.Constants = lowerConstants(ft.Chunk.Constants, ft.Chunk.Code)
+		constMap := make(map[int]int)
+		fn.Constants, constMap = lowerConstants(ft.Chunk.Constants, ft.Chunk.Code)
 		fn.Code = lowerInstructions(ft.Chunk.Code)
+
+		// Remap constant indices and names
+		for i, inst := range fn.Code {
+			switch inst.Op {
+			case core.OpConst, core.OpLoadGlobal, core.OpStoreGlobal, core.OpGetProp, core.OpSetProp, core.OpImportFunc:
+				if int(inst.A) < len(ft.Chunk.Constants) {
+					if newIdx, ok := constMap[int(inst.A)]; ok && newIdx >= 0 {
+						fn.Code[i].A = uint32(newIdx)
+					}
+				}
+			}
+
+			// Check if this is a local variable access
+			remappedA := fn.Code[i].A
+			if inst.Op == core.OpLoadGlobal || inst.Op == core.OpStoreGlobal {
+				if int(remappedA) < len(fn.Constants) {
+					if name, ok := fn.Constants[remappedA].(string); ok {
+						if localIdx, isLocal := localMap[name]; isLocal {
+							// Local variable - use LoadLocal/StoreLocal
+							if inst.Op == core.OpLoadGlobal {
+								fn.Code[i].Op = core.OpLoadLocal
+							} else {
+								fn.Code[i].Op = core.OpStoreLocal
+							}
+							fn.Code[i].A = localIdx
+						} else if idx, exists := globalNames[name]; exists {
+							fn.Code[i].A = idx
+						} else if inst.Op == core.OpLoadGlobal {
+							// Builtin or undefined name - keep as string constant
+							fn.Code[i].Op = core.OpConst
+						}
+					}
+				}
+			}
+		}
 	}
 
 	return fn
@@ -88,26 +156,141 @@ func lowerChunkAsFunction(chunk *bytecode.Chunk, name string) module.Function {
 		Name:      name,
 		TypeIndex: 0,
 	}
-	fn.Constants = lowerConstants(chunk.Constants, chunk.Code)
+	fn.Constants, _ = lowerConstants(chunk.Constants, chunk.Code)
 	fn.Code = lowerInstructions(chunk.Code)
 	return fn
 }
 
-func lowerConstants(constants []any, code []bytecode.Instruction) []any {
-	var result []any
-	for _, c := range constants {
+func lowerChunkAsFunctionWithGlobals(chunk *bytecode.Chunk, name string, globalNames map[string]uint32, funcIndexMap map[int]int) module.Function {
+	fn := module.Function{
+		Name:      name,
+		TypeIndex: 0,
+	}
+	constMap := make(map[int]int)
+	fn.Constants, constMap = lowerConstants(chunk.Constants, chunk.Code)
+	fn.Code = lowerInstructions(chunk.Code)
+
+	// Build reverse map: function name -> function index in iavm module
+	nameToFuncIdx := make(map[string]uint32)
+	for constIdx, funcIdx := range funcIndexMap {
+		if constIdx < len(chunk.Constants) {
+			if ft, ok := chunk.Constants[constIdx].(*bytecode.FunctionTemplate); ok && ft.Name != "" {
+				nameToFuncIdx[ft.Name] = uint32(funcIdx)
+			}
+		}
+	}
+
+	// Remap instructions: fix constant indices and handle global names
+	for i, inst := range fn.Code {
+		switch inst.Op {
+		case core.OpConst, core.OpLoadGlobal, core.OpStoreGlobal, core.OpGetProp, core.OpSetProp, core.OpImportFunc:
+			if int(inst.A) < len(chunk.Constants) {
+				if newIdx, ok := constMap[int(inst.A)]; ok && newIdx >= 0 {
+					fn.Code[i].A = uint32(newIdx)
+				}
+			}
+		}
+
+		// Handle global name remapping and function references
+		// Use fn.Code[i].A which has been remapped by the first pass
+		remappedA := fn.Code[i].A
+		if inst.Op == core.OpLoadGlobal {
+			if int(remappedA) < len(fn.Constants) {
+				if globalName, ok := fn.Constants[remappedA].(string); ok {
+					if funcIdx, isFunc := nameToFuncIdx[globalName]; isFunc {
+						// Replace global load with function reference push
+						fn.Code[i].Op = core.OpConst
+						fn.Constants = append(fn.Constants, int64(funcIdx))
+						fn.Code[i].A = uint32(len(fn.Constants) - 1)
+					} else if _, isGlobal := globalNames[globalName]; !isGlobal {
+						// Builtin name (not a global, not a function) - keep as string for interpreter
+						fn.Code[i].Op = core.OpConst
+					} else if idx, exists := globalNames[globalName]; exists {
+						fn.Code[i].A = idx
+					}
+				}
+			}
+		}
+		if inst.Op == core.OpStoreGlobal {
+			if int(remappedA) < len(fn.Constants) {
+				if globalName, ok := fn.Constants[remappedA].(string); ok {
+					// Check if this is a function name - if so, make it a no-op
+					// (functions are already in the module's function list)
+					if _, isFunc := nameToFuncIdx[globalName]; isFunc {
+						fn.Code[i].Op = core.OpNop
+					} else if idx, exists := globalNames[globalName]; exists {
+						fn.Code[i].A = idx
+					}
+				}
+			}
+		}
+	}
+
+	return fn
+}
+
+func collectGlobalNames(chunk *bytecode.Chunk) map[string]uint32 {
+	globalNames := make(map[string]uint32)
+	var nextIdx uint32
+
+	for _, inst := range chunk.Code {
+		switch inst.Op {
+		case bytecode.OpSetName, bytecode.OpDefineName:
+			if int(inst.A) < len(chunk.Constants) {
+				if name, ok := chunk.Constants[inst.A].(string); ok {
+					if _, exists := globalNames[name]; !exists {
+						globalNames[name] = nextIdx
+						nextIdx++
+					}
+				}
+			}
+		}
+	}
+
+	// Also collect from function chunks, but only OpSetName (not OpDefineName)
+	// OpDefineName inside functions declares locals, not globals.
+	// OpSetName inside functions may reference implicit globals.
+	for _, c := range chunk.Constants {
+		if ft, ok := c.(*bytecode.FunctionTemplate); ok && ft.Chunk != nil {
+			for _, inst := range ft.Chunk.Code {
+				switch inst.Op {
+				case bytecode.OpSetName:
+					if int(inst.A) < len(ft.Chunk.Constants) {
+						if name, ok := ft.Chunk.Constants[inst.A].(string); ok {
+							if _, exists := globalNames[name]; !exists {
+								globalNames[name] = nextIdx
+								nextIdx++
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return globalNames
+}
+
+func lowerConstants(constants []any, code []bytecode.Instruction) ([]any, map[int]int) {
+	result := []any{}
+	indexMap := make(map[int]int)
+
+	for i, c := range constants {
 		switch v := c.(type) {
 		case *bytecode.FunctionTemplate:
 			// Skip function templates in constants - they become separate functions
+			indexMap[i] = -1
 			continue
 		case nil, bool, int, int64, float64, string:
+			indexMap[i] = len(result)
 			result = append(result, c)
 		default:
 			_ = v
+			indexMap[i] = len(result)
 			result = append(result, nil)
 		}
 	}
-	return result
+	return result, indexMap
 }
 
 func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
@@ -241,9 +424,10 @@ func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
 			iavmInst.Op = core.OpOr
 
 		case bytecode.OpClosure:
-			// Closures become function references
-			iavmInst.Op = core.OpConst
-			iavmInst.A = uint32(inst.A)
+			// Closures are handled by the module's function list
+			// For top-level functions, this is a no-op
+			// For inner closures, we'd need proper upvalue handling
+			iavmInst.Op = core.OpNop
 
 		case bytecode.OpClass:
 			iavmInst.Op = core.OpMakeObject
@@ -254,9 +438,7 @@ func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
 			iavmInst.B = uint32(inst.B)
 
 		case bytecode.OpIndex:
-			// Index access maps to property get
-			iavmInst.Op = core.OpGetProp
-			iavmInst.A = uint32(inst.A)
+			iavmInst.Op = core.OpIndex
 
 		case bytecode.OpBitAnd:
 			iavmInst.Op = core.OpBitAnd

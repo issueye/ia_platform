@@ -3,6 +3,7 @@ package binary
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
 )
@@ -294,5 +295,5 @@ func (d *decoder) readFloat64() float64 {
 	}
 	bits := binary.LittleEndian.Uint64(d.data[d.pos:])
 	d.pos += 8
-	return float64(bits)
+	return math.Float64frombits(bits)
 }

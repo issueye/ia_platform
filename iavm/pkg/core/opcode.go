@@ -46,5 +46,6 @@ const (
 	OpTypeof
 	OpPushTry
 	OpPopTry
+	OpIndex
 	OpThrow
 )

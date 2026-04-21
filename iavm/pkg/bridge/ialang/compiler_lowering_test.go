@@ -146,6 +146,7 @@ func TestLowerToModule_NewOpcodeMapping(t *testing.T) {
 		{"PushTry", bytecode.OpPushTry, core.OpPushTry},
 		{"PopTry", bytecode.OpPopTry, core.OpPopTry},
 		{"Throw", bytecode.OpThrow, core.OpThrow},
+		{"Index", bytecode.OpIndex, core.OpIndex},
 	}
 
 	for _, tt := range tests {
