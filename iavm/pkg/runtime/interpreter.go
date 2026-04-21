@@ -66,26 +66,20 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		frame.Locals[inst.A] = vm.stack.Pop()
 
 	case core.OpLoadGlobal:
-		fn := &vm.mod.Functions[frame.FunctionIndex]
-		if int(inst.A) >= len(fn.Constants) {
-			return fmt.Errorf("global constant index %d out of range", inst.A)
+		if int(inst.A) >= len(vm.globals) {
+			vm.stack.Push(core.Value{Kind: core.ValueNull})
+		} else {
+			vm.stack.Push(vm.globals[inst.A])
 		}
-		name, ok := fn.Constants[inst.A].(string)
-		if !ok {
-			return fmt.Errorf("global name at index %d is not a string", inst.A)
-		}
-		vm.stack.Push(vm.globals[name])
 
 	case core.OpStoreGlobal:
-		fn := &vm.mod.Functions[frame.FunctionIndex]
-		if int(inst.A) >= len(fn.Constants) {
-			return fmt.Errorf("global constant index %d out of range", inst.A)
+		val := vm.stack.Pop()
+		if int(inst.A) >= len(vm.globals) {
+			newGlobals := make([]core.Value, inst.A+1)
+			copy(newGlobals, vm.globals)
+			vm.globals = newGlobals
 		}
-		name, ok := fn.Constants[inst.A].(string)
-		if !ok {
-			return fmt.Errorf("global name at index %d is not a string", inst.A)
-		}
-		vm.globals[name] = vm.stack.Pop()
+		vm.globals[inst.A] = val
 
 	case core.OpAdd:
 		b := vm.stack.Pop()

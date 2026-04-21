@@ -15,7 +15,7 @@ type VM struct {
 	mod           *module.Module
 	options       Options
 	stack         *Stack
-	globals       map[string]core.Value
+	globals       []core.Value
 	functions     []CompiledFunction
 	handles       *HandleTable
 	frames        []*Frame
@@ -29,7 +29,7 @@ func New(mod *module.Module, opts Options) (*VM, error) {
 		mod:       mod,
 		options:   opts,
 		stack:     NewStack(256),
-		globals:   map[string]core.Value{},
+		globals:   make([]core.Value, 0, 64),
 		functions: make([]CompiledFunction, 0),
 		handles:   NewHandleTable(),
 	}
