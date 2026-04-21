@@ -179,12 +179,19 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			case core.ValueI64:
 				fnIdx = uint32(fnRef.Raw.(int64))
 			case core.ValueString:
-				// Builtin function name - pop args and push null
-				argCount := int(inst.A)
-				for i := 0; i < argCount; i++ {
-					vm.stack.Pop()
+				// Builtin function name
+				name := fnRef.Raw.(string)
+				builtin, ok := vm.builtins[name]
+				if !ok {
+					return fmt.Errorf("builtin function not found: %s", name)
 				}
-				vm.stack.Push(core.Value{Kind: core.ValueNull})
+				argCount := int(inst.A)
+				args := make([]core.Value, argCount)
+				for i := argCount - 1; i >= 0; i-- {
+					args[i] = vm.stack.Pop()
+				}
+				result := builtin(args)
+				vm.stack.Push(result)
 				return nil
 			default:
 				return fmt.Errorf("cannot call value of kind %v", fnRef.Kind)

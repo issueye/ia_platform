@@ -11,6 +11,8 @@ type CompiledFunction struct {
 	Index uint32
 }
 
+type BuiltinFunc func(args []core.Value) core.Value
+
 type VM struct {
 	mod           *module.Module
 	options       Options
@@ -23,6 +25,7 @@ type VM struct {
 	tryStack      []uint32
 	startedAt     int64
 	stepCount     int64
+	builtins      map[string]BuiltinFunc
 }
 
 func New(mod *module.Module, opts Options) (*VM, error) {
@@ -33,6 +36,7 @@ func New(mod *module.Module, opts Options) (*VM, error) {
 		globals:   make([]core.Value, 0, 64),
 		functions: make([]CompiledFunction, 0),
 		handles:   NewHandleTable(),
+		builtins:  make(map[string]BuiltinFunc),
 	}
 
 	// Index functions
@@ -43,7 +47,24 @@ func New(mod *module.Module, opts Options) (*VM, error) {
 		})
 	}
 
+	// Register default builtins
+	vm.registerBuiltin("print", builtinPrint)
+	vm.registerBuiltin("len", builtinLen)
+	vm.registerBuiltin("typeof", builtinTypeof)
+	vm.registerBuiltin("str", builtinStr)
+	vm.registerBuiltin("int", builtinInt)
+	vm.registerBuiltin("float", builtinFloat)
+
 	return vm, nil
+}
+
+func (vm *VM) registerBuiltin(name string, fn BuiltinFunc) {
+	vm.builtins[name] = fn
+}
+
+func (vm *VM) GetBuiltin(name string) (BuiltinFunc, bool) {
+	fn, ok := vm.builtins[name]
+	return fn, ok
 }
 
 func (vm *VM) Run() error {
