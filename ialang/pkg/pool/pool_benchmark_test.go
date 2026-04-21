@@ -3,7 +3,7 @@ package pool
 import (
 	"testing"
 
-	rttypes "ialang/pkg/lang/runtime/types"
+	commonrt "iacommon/pkg/ialang/runtime"
 )
 
 func BenchmarkGoroutinePoolSubmitAwait(b *testing.B) {
@@ -30,7 +30,7 @@ func BenchmarkGoroutinePoolSubmitAwaitParallel(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			task := p.Submit(func() (rttypes.Value, error) {
+			task := p.Submit(func() (commonrt.Value, error) {
 				return 1, nil
 			})
 			if _, err := task.Await(); err != nil {
@@ -52,7 +52,7 @@ func BenchmarkPoolManagerSubmitAwait(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		task, err := pm.Submit(DefaultPool, func() (rttypes.Value, error) {
+		task, err := pm.Submit(DefaultPool, func() (commonrt.Value, error) {
 			return 1, nil
 		})
 		if err != nil {
@@ -83,9 +83,9 @@ func benchPoolThroughput(b *testing.B, workers int, batchSize int) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tasks := make([]rttypes.Awaitable, batchSize)
+		tasks := make([]commonrt.Awaitable, batchSize)
 		for j := 0; j < batchSize; j++ {
-			tasks[j] = p.Submit(func() (rttypes.Value, error) {
+			tasks[j] = p.Submit(func() (commonrt.Value, error) {
 				return 1, nil
 			})
 		}

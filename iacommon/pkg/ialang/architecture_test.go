@@ -52,6 +52,20 @@ func TestSharedPackageBoundaries(t *testing.T) {
 			},
 		},
 		{
+			pkgDir: "pkg/ialang/runtime",
+			forbidden: []string{
+				"iacommon/pkg/ialang/ast",
+				"iacommon/pkg/ialang/bytecode",
+				"iacommon/pkg/ialang/chunkcodec",
+				"iacommon/pkg/ialang/module",
+				"iacommon/pkg/ialang/packagefile",
+				"iacommon/pkg/ialang/token",
+				"ialang/pkg/lang",
+				"iavm/pkg/bridge",
+				"iavm/pkg/runtime",
+			},
+		},
+		{
 			pkgDir: "pkg/ialang/module",
 			forbidden: []string{
 				"iacommon/pkg/ialang/ast",

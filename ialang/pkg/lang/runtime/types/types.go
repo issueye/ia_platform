@@ -1,29 +1,14 @@
 package types
 
-import (
-	"context"
-	common "iacommon/pkg/ialang/value"
-)
+import commonrt "iacommon/pkg/ialang/runtime"
 
-type Value = common.Value
-type Object = common.Object
-type Array = common.Array
+type Value = commonrt.Value
+type Object = commonrt.Object
+type Array = commonrt.Array
 
-type NativeFunction = common.NativeFunction
+type NativeFunction = commonrt.NativeFunction
 
-type Awaitable interface {
-	Await() (Value, error)
-	IsDone() bool
-}
-
-type ContextAwaitable interface {
-	AwaitContext(ctx context.Context) (Value, error)
-}
-
-type AsyncTask func() (Value, error)
-
-type AsyncRuntime interface {
-	Spawn(task AsyncTask) Awaitable
-	AwaitValue(v Value) (Value, error)
-	Name() string
-}
+type Awaitable = commonrt.Awaitable
+type ContextAwaitable = commonrt.ContextAwaitable
+type AsyncTask = commonrt.AsyncTask
+type AsyncRuntime = commonrt.AsyncRuntime

@@ -21,6 +21,7 @@ func TestPackageBoundaries(t *testing.T) {
 				"ialang/pkg/lang",
 				"ialang/pkg/lang/compiler",
 				"ialang/pkg/lang/frontend",
+				"iavm/pkg/bridge",
 			},
 		},
 		{

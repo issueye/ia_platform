@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	rttypes "ialang/pkg/lang/runtime/types"
+	commonrt "iacommon/pkg/ialang/runtime"
 )
 
 // TestPoolManagerInitialization 测试池管理器初始化
@@ -59,7 +59,7 @@ func TestPoolManagerSubmit(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		_, err := pm.Submit(DefaultPool, func() (rttypes.Value, error) {
+		_, err := pm.Submit(DefaultPool, func() (commonrt.Value, error) {
 			atomic.AddInt64(&counter, 1)
 			wg.Done()
 			return nil, nil
@@ -96,7 +96,7 @@ func TestPoolManagerStats(t *testing.T) {
 
 	// 提交一些任务
 	for i := 0; i < 5; i++ {
-		pm.Submit(DefaultPool, func() (rttypes.Value, error) {
+		pm.Submit(DefaultPool, func() (commonrt.Value, error) {
 			time.Sleep(10 * time.Millisecond)
 			return nil, nil
 		})
@@ -133,7 +133,7 @@ func TestPoolManagerMultiplePoolTypes(t *testing.T) {
 	defer pm.Shutdown()
 
 	// 测试默认池
-	_, err := pm.Submit(DefaultPool, func() (rttypes.Value, error) {
+	_, err := pm.Submit(DefaultPool, func() (commonrt.Value, error) {
 		return nil, nil
 	})
 	if err != nil {
@@ -141,7 +141,7 @@ func TestPoolManagerMultiplePoolTypes(t *testing.T) {
 	}
 
 	// 测试CPU池
-	_, err = pm.Submit(CPUPool, func() (rttypes.Value, error) {
+	_, err = pm.Submit(CPUPool, func() (commonrt.Value, error) {
 		return nil, nil
 	})
 	if err != nil {
@@ -149,7 +149,7 @@ func TestPoolManagerMultiplePoolTypes(t *testing.T) {
 	}
 
 	// 测试IO池
-	_, err = pm.Submit(IOPool, func() (rttypes.Value, error) {
+	_, err = pm.Submit(IOPool, func() (commonrt.Value, error) {
 		return nil, nil
 	})
 	if err != nil {
@@ -157,7 +157,7 @@ func TestPoolManagerMultiplePoolTypes(t *testing.T) {
 	}
 
 	// 测试高优先级池
-	_, err = pm.Submit(HighPriorityPool, func() (rttypes.Value, error) {
+	_, err = pm.Submit(HighPriorityPool, func() (commonrt.Value, error) {
 		return nil, nil
 	})
 	if err != nil {
@@ -181,7 +181,7 @@ func TestPoolManagerShutdown(t *testing.T) {
 
 	// 提交长时间任务
 	for i := 0; i < 5; i++ {
-		pm.Submit(DefaultPool, func() (rttypes.Value, error) {
+		pm.Submit(DefaultPool, func() (commonrt.Value, error) {
 			time.Sleep(100 * time.Millisecond)
 			atomic.AddInt64(&completed, 1)
 			return nil, nil
@@ -220,7 +220,7 @@ func TestPoolManagerAsyncRuntime(t *testing.T) {
 	}
 
 	// 使用 AsyncRuntime 提交任务
-	awaitable := asyncRuntime.Spawn(func() (rttypes.Value, error) {
+	awaitable := asyncRuntime.Spawn(func() (commonrt.Value, error) {
 		return nil, nil
 	})
 
@@ -314,7 +314,7 @@ func TestPoolManagerCallbacks(t *testing.T) {
 	defer pm.Shutdown()
 
 	// 提交成功任务
-	pm.Submit(DefaultPool, func() (rttypes.Value, error) {
+	pm.Submit(DefaultPool, func() (commonrt.Value, error) {
 		return nil, nil
 	})
 

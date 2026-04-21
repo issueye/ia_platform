@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	rttypes "ialang/pkg/lang/runtime/types"
+	commonrt "iacommon/pkg/ialang/runtime"
 )
 
 // PoolType 协程池的类型
@@ -26,9 +26,9 @@ const (
 
 // PoolConfig 协程池配置
 type PoolConfig struct {
-	Type     PoolType      `json:"type"`     // 池类型
-	Options  PoolOptions   `json:"options"`  // 池选项
-	Enabled  bool          `json:"enabled"`  // 是否启用
+	Type    PoolType    `json:"type"`    // 池类型
+	Options PoolOptions `json:"options"` // 池选项
+	Enabled bool        `json:"enabled"` // 是否启用
 }
 
 // PoolManager 统一的协程池管理器
@@ -40,10 +40,10 @@ type PoolManager struct {
 	isShutdown    bool
 
 	// 全局统计
-	totalSubmitted  int64
-	totalCompleted  int64
-	totalFailed     int64
-	totalRejected   int64
+	totalSubmitted int64
+	totalCompleted int64
+	totalFailed    int64
+	totalRejected  int64
 
 	// 监控回调
 	OnTaskSubmit   func(poolType PoolType, task *Task)
@@ -62,20 +62,20 @@ var globalPoolManagerOnce sync.Once
 
 // PoolManagerOptions 协程池管理器选项
 type PoolManagerOptions struct {
-	ShutdownTimeout time.Duration
-	EnableDefault   bool
-	EnableCPUPool   bool
-	EnableIOPool    bool
+	ShutdownTimeout        time.Duration
+	EnableDefault          bool
+	EnableCPUPool          bool
+	EnableIOPool           bool
 	EnableHighPriorityPool bool
 }
 
 // DefaultPoolManagerOptions 默认管理器选项
 func DefaultPoolManagerOptions() PoolManagerOptions {
 	return PoolManagerOptions{
-		ShutdownTimeout:    30 * time.Second,
-		EnableDefault:      true,
-		EnableCPUPool:      false,
-		EnableIOPool:       false,
+		ShutdownTimeout:        30 * time.Second,
+		EnableDefault:          true,
+		EnableCPUPool:          false,
+		EnableIOPool:           false,
 		EnableHighPriorityPool: false,
 	}
 }
@@ -149,14 +149,14 @@ func (pm *PoolManager) GetPool(poolType PoolType) (*GoroutinePool, error) {
 }
 
 // Submit 提交任务到指定类型的池
-func (pm *PoolManager) Submit(poolType PoolType, taskFunc func() (rttypes.Value, error)) (rttypes.Awaitable, error) {
+func (pm *PoolManager) Submit(poolType PoolType, taskFunc func() (commonrt.Value, error)) (commonrt.Awaitable, error) {
 	pool, err := pm.GetPool(poolType)
 	if err != nil {
 		return nil, err
 	}
 
 	// 包装任务以统计
-	wrappedTask := func() (rttypes.Value, error) {
+	wrappedTask := func() (commonrt.Value, error) {
 		atomic.AddInt64(&pm.totalSubmitted, 1)
 		return taskFunc()
 	}
@@ -173,14 +173,14 @@ func (pm *PoolManager) Submit(poolType PoolType, taskFunc func() (rttypes.Value,
 }
 
 // SubmitWithRetry 提交任务到指定类型的池（带重试）
-func (pm *PoolManager) SubmitWithRetry(poolType PoolType, taskFunc func() (rttypes.Value, error), maxRetries int) (rttypes.Awaitable, error) {
+func (pm *PoolManager) SubmitWithRetry(poolType PoolType, taskFunc func() (commonrt.Value, error), maxRetries int) (commonrt.Awaitable, error) {
 	pool, err := pm.GetPool(poolType)
 	if err != nil {
 		return nil, err
 	}
 
 	// 包装任务以统计
-	wrappedTask := func() (rttypes.Value, error) {
+	wrappedTask := func() (commonrt.Value, error) {
 		atomic.AddInt64(&pm.totalSubmitted, 1)
 		return taskFunc()
 	}
@@ -317,16 +317,16 @@ func (pm *PoolManager) PoolCount() int {
 
 // GlobalPoolStats 全局协程池统计信息
 type GlobalPoolStats struct {
-	TotalSubmitted int64              `json:"totalSubmitted"` // 总提交任务数
-	TotalCompleted int64              `json:"totalCompleted"` // 总完成任务数
-	TotalFailed    int64              `json:"totalFailed"`    // 总失败任务数
-	TotalRejected  int64              `json:"totalRejected"`  // 总拒绝任务数
-	TotalPools     int                `json:"totalPools"`     // 总池数
-	ActivePools    int                `json:"activePools"`    // 活跃池数
-	TotalWorkers   int                `json:"totalWorkers"`   // 总工作协程数
-	ActiveWorkers  int                `json:"activeWorkers"`  // 总活跃工作协程数
-	QueuedTasks    int                `json:"queuedTasks"`    // 总队列任务数
-	PoolStats      map[PoolType]PoolStats `json:"poolStats"`  // 各池详细统计
+	TotalSubmitted int64                  `json:"totalSubmitted"` // 总提交任务数
+	TotalCompleted int64                  `json:"totalCompleted"` // 总完成任务数
+	TotalFailed    int64                  `json:"totalFailed"`    // 总失败任务数
+	TotalRejected  int64                  `json:"totalRejected"`  // 总拒绝任务数
+	TotalPools     int                    `json:"totalPools"`     // 总池数
+	ActivePools    int                    `json:"activePools"`    // 活跃池数
+	TotalWorkers   int                    `json:"totalWorkers"`   // 总工作协程数
+	ActiveWorkers  int                    `json:"activeWorkers"`  // 总活跃工作协程数
+	QueuedTasks    int                    `json:"queuedTasks"`    // 总队列任务数
+	PoolStats      map[PoolType]PoolStats `json:"poolStats"`      // 各池详细统计
 }
 
 // CreateAsyncRuntime 基于指定池类型创建 AsyncRuntime

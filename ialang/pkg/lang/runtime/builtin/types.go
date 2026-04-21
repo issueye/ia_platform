@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	commonrt "iacommon/pkg/ialang/runtime"
 	common "iacommon/pkg/ialang/value"
 	rttypes "ialang/pkg/lang/runtime/types"
 )
@@ -11,4 +12,4 @@ type Array = common.Array
 type NativeFunction = common.NativeFunction
 type UserFunction = rttypes.UserFunction
 type BoundMethod = rttypes.BoundMethod
-type AsyncRuntime = rttypes.AsyncRuntime
+type AsyncRuntime = commonrt.AsyncRuntime

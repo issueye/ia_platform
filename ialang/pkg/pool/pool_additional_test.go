@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	rttypes "ialang/pkg/lang/runtime/types"
+	commonrt "iacommon/pkg/ialang/runtime"
 )
 
 func TestGoroutinePoolStartTwice(t *testing.T) {
@@ -43,7 +43,7 @@ func TestGoroutinePoolSubmitAfterShutdown(t *testing.T) {
 		t.Fatalf("Shutdown() error = %v", err)
 	}
 
-	task := p.Submit(func() (rttypes.Value, error) {
+	task := p.Submit(func() (commonrt.Value, error) {
 		return "ok", nil
 	})
 
@@ -84,12 +84,12 @@ func TestGoroutinePoolRejectPolicyErrorCompletesTask(t *testing.T) {
 	}
 	defer p.Shutdown()
 
-	first := p.Submit(func() (rttypes.Value, error) { return 1, nil })
+	first := p.Submit(func() (commonrt.Value, error) { return 1, nil })
 	if first == nil {
 		t.Fatal("first task should not be nil")
 	}
 
-	second := p.Submit(func() (rttypes.Value, error) { return 2, nil })
+	second := p.Submit(func() (commonrt.Value, error) { return 2, nil })
 	done := make(chan struct{})
 	var gotErr error
 	go func() {
@@ -122,9 +122,8 @@ func TestPoolManagerSubmitBeforeInitialize(t *testing.T) {
 
 	pm := NewPoolManager(opts)
 
-	_, err := pm.Submit(DefaultPool, func() (rttypes.Value, error) { return nil, nil })
+	_, err := pm.Submit(DefaultPool, func() (commonrt.Value, error) { return nil, nil })
 	if err == nil {
 		t.Fatal("Submit() before Initialize() should fail")
 	}
 }
-

@@ -7,42 +7,42 @@ import (
 	"sync/atomic"
 	"time"
 
-	rttypes "ialang/pkg/lang/runtime/types"
+	commonrt "iacommon/pkg/ialang/runtime"
 )
 
 // PoolStats 协程池统计信息
 type PoolStats struct {
-	ActiveWorkers   int   `json:"activeWorkers"`   // 活跃工作协程数
-	IdleWorkers     int   `json:"idleWorkers"`     // 空闲工作协程数
-	TotalWorkers    int   `json:"totalWorkers"`    // 总工作协程数
-	QueuedTasks     int   `json:"queuedTasks"`     // 队列中等待的任务数
-	CompletedTasks  int64 `json:"completedTasks"`  // 已完成任务总数
-	FailedTasks     int64 `json:"failedTasks"`     // 失败任务总数
-	RejectedTasks   int64 `json:"rejectedTasks"`   // 被拒绝的任务数
-	MaxConcurrency  int   `json:"maxConcurrency"`  // 最大并发数
-	CurrentLoad     float64 `json:"currentLoad"`   // 当前负载百分比 (0-100)
+	ActiveWorkers  int     `json:"activeWorkers"`  // 活跃工作协程数
+	IdleWorkers    int     `json:"idleWorkers"`    // 空闲工作协程数
+	TotalWorkers   int     `json:"totalWorkers"`   // 总工作协程数
+	QueuedTasks    int     `json:"queuedTasks"`    // 队列中等待的任务数
+	CompletedTasks int64   `json:"completedTasks"` // 已完成任务总数
+	FailedTasks    int64   `json:"failedTasks"`    // 失败任务总数
+	RejectedTasks  int64   `json:"rejectedTasks"`  // 被拒绝的任务数
+	MaxConcurrency int     `json:"maxConcurrency"` // 最大并发数
+	CurrentLoad    float64 `json:"currentLoad"`    // 当前负载百分比 (0-100)
 }
 
 // PoolOptions 协程池配置选项
 type PoolOptions struct {
-	MinWorkers    int           `json:"minWorkers"`    // 最小工作协程数
-	MaxWorkers    int           `json:"maxWorkers"`    // 最大工作协程数
-	QueueSize     int           `json:"queueSize"`     // 任务队列大小
-	IdleTimeout   time.Duration `json:"idleTimeout"`   // 空闲超时时间
-	MaxRetries    int           `json:"maxRetries"`    // 任务最大重试次数
-	RejectPolicy  string        `json:"rejectPolicy"`  // 拒绝策略: "block", "discard", "error"
-	TrackTaskTiming bool        `json:"trackTaskTiming"` // 是否记录任务时间戳
+	MinWorkers      int           `json:"minWorkers"`      // 最小工作协程数
+	MaxWorkers      int           `json:"maxWorkers"`      // 最大工作协程数
+	QueueSize       int           `json:"queueSize"`       // 任务队列大小
+	IdleTimeout     time.Duration `json:"idleTimeout"`     // 空闲超时时间
+	MaxRetries      int           `json:"maxRetries"`      // 任务最大重试次数
+	RejectPolicy    string        `json:"rejectPolicy"`    // 拒绝策略: "block", "discard", "error"
+	TrackTaskTiming bool          `json:"trackTaskTiming"` // 是否记录任务时间戳
 }
 
 // DefaultPoolOptions 默认协程池配置
 func DefaultPoolOptions() PoolOptions {
 	return PoolOptions{
-		MinWorkers:   runtime.NumCPU(),
-		MaxWorkers:   runtime.NumCPU() * 10,
-		QueueSize:    1000,
-		IdleTimeout:  30 * time.Second,
-		MaxRetries:   3,
-		RejectPolicy: "block",
+		MinWorkers:      runtime.NumCPU(),
+		MaxWorkers:      runtime.NumCPU() * 10,
+		QueueSize:       1000,
+		IdleTimeout:     30 * time.Second,
+		MaxRetries:      3,
+		RejectPolicy:    "block",
 		TrackTaskTiming: true,
 	}
 }
@@ -50,8 +50,8 @@ func DefaultPoolOptions() PoolOptions {
 // Task 任务定义
 type Task struct {
 	ID          string
-	Func        func() (rttypes.Value, error)
-	Result      rttypes.Value
+	Func        func() (commonrt.Value, error)
+	Result      commonrt.Value
 	Err         error
 	Retries     int
 	MaxRetries  int
@@ -65,31 +65,31 @@ type Task struct {
 
 // Worker 工作协程
 type Worker struct {
-	ID        int
-	TaskChan  chan *Task
+	ID         int
+	TaskChan   chan *Task
 	ResultChan chan *Task
-	QuitChan  chan bool
-	IsActive  bool
+	QuitChan   chan bool
+	IsActive   bool
 	LastActive time.Time
-	pool      *GoroutinePool
+	pool       *GoroutinePool
 }
 
 // GoroutinePool 统一的协程池管理器
 type GoroutinePool struct {
-	mu              sync.RWMutex
-	workers         []*Worker
-	taskQueue       chan *Task
-	resultQueue     chan *Task
-	options         PoolOptions
-	activeCount     int32
-	workerCount     int32
-	completedCount  int64
-	failedCount     int64
-	rejectedCount   int64
-	isShutdown      bool
-	isStarted       bool
-	startTime       time.Time
-	wg              sync.WaitGroup
+	mu             sync.RWMutex
+	workers        []*Worker
+	taskQueue      chan *Task
+	resultQueue    chan *Task
+	options        PoolOptions
+	activeCount    int32
+	workerCount    int32
+	completedCount int64
+	failedCount    int64
+	rejectedCount  int64
+	isShutdown     bool
+	isStarted      bool
+	startTime      time.Time
+	wg             sync.WaitGroup
 
 	// 监控回调
 	OnTaskComplete func(task *Task)
@@ -187,15 +187,15 @@ func (p *GoroutinePool) removeIdleWorker() {
 }
 
 // Submit 提交任务到协程池
-func (p *GoroutinePool) Submit(taskFunc func() (rttypes.Value, error)) rttypes.Awaitable {
+func (p *GoroutinePool) Submit(taskFunc func() (commonrt.Value, error)) commonrt.Awaitable {
 	return p.SubmitWithRetry(taskFunc, p.options.MaxRetries)
 }
 
 // SubmitWithRetry 提交任务并支持重试
-func (p *GoroutinePool) SubmitWithRetry(taskFunc func() (rttypes.Value, error), maxRetries int) rttypes.Awaitable {
+func (p *GoroutinePool) SubmitWithRetry(taskFunc func() (commonrt.Value, error), maxRetries int) commonrt.Awaitable {
 	task := &Task{
-		Func:       taskFunc,
-		MaxRetries: maxRetries,
+		Func:        taskFunc,
+		MaxRetries:  maxRetries,
 		trackTiming: p.options.TrackTaskTiming,
 	}
 	if task.trackTiming {
@@ -384,8 +384,8 @@ func (w *Worker) executeTask(task *Task) {
 
 // PoolAsyncRuntime 基于协程池的 AsyncRuntime 实现
 type PoolAsyncRuntime struct {
-	pool   *GoroutinePool
-	name   string
+	pool *GoroutinePool
+	name string
 }
 
 // NewPoolAsyncRuntime 创建基于协程池的 AsyncRuntime
@@ -406,13 +406,13 @@ func NewPoolAsyncRuntime(options PoolOptions) (*PoolAsyncRuntime, error) {
 }
 
 // Spawn 提交任务到协程池
-func (r *PoolAsyncRuntime) Spawn(task rttypes.AsyncTask) rttypes.Awaitable {
+func (r *PoolAsyncRuntime) Spawn(task commonrt.AsyncTask) commonrt.Awaitable {
 	return r.pool.Submit(task)
 }
 
 // AwaitValue 等待值完成
-func (r *PoolAsyncRuntime) AwaitValue(v rttypes.Value) (rttypes.Value, error) {
-	if awaitable, ok := v.(rttypes.Awaitable); ok {
+func (r *PoolAsyncRuntime) AwaitValue(v commonrt.Value) (commonrt.Value, error) {
+	if awaitable, ok := v.(commonrt.Awaitable); ok {
 		return awaitable.Await()
 	}
 	return v, nil
@@ -429,10 +429,10 @@ func (r *PoolAsyncRuntime) GetPool() *GoroutinePool {
 }
 
 // Task 实现 Awaitable 接口
-var _ rttypes.Awaitable = (*Task)(nil)
+var _ commonrt.Awaitable = (*Task)(nil)
 
 // Await 等待任务完成
-func (t *Task) Await() (rttypes.Value, error) {
+func (t *Task) Await() (commonrt.Value, error) {
 	t.wg.Wait()
 	return t.Result, t.Err
 }

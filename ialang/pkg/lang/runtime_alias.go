@@ -2,13 +2,14 @@ package lang
 
 import (
 	bc "iacommon/pkg/ialang/bytecode"
+	commonrt "iacommon/pkg/ialang/runtime"
 	rt "ialang/pkg/lang/runtime"
 	rvm "ialang/pkg/lang/runtime/vm"
 )
 
 type Value = rt.Value
 type Object = rt.Object
-type AsyncRuntime = rt.AsyncRuntime
+type AsyncRuntime = commonrt.AsyncRuntime
 type GoroutineRuntimeOptions = rt.GoroutineRuntimeOptions
 
 type VM = rvm.VM

@@ -1,12 +1,12 @@
 package builtin
 
 import (
+	commonrt "iacommon/pkg/ialang/runtime"
 	common "iacommon/pkg/ialang/value"
 	"ialang/pkg/lang/runtime"
-	rttypes "ialang/pkg/lang/runtime/types"
 )
 
-func DefaultModules(asyncRuntime rttypes.AsyncRuntime) map[string]common.Value {
+func DefaultModules(asyncRuntime commonrt.AsyncRuntime) map[string]common.Value {
 	if asyncRuntime == nil {
 		asyncRuntime = runtime.NewGoroutineRuntime()
 	}

@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	commonrt "iacommon/pkg/ialang/runtime"
 	"ialang/pkg/pool"
-	rttypes "ialang/pkg/lang/runtime/types"
 	"time"
 )
 
-type Awaitable = rttypes.Awaitable
-type ContextAwaitable = rttypes.ContextAwaitable
-type AsyncTask = rttypes.AsyncTask
-type AsyncRuntime = rttypes.AsyncRuntime
+type Awaitable = commonrt.Awaitable
+type ContextAwaitable = commonrt.ContextAwaitable
+type AsyncTask = commonrt.AsyncTask
+type AsyncRuntime = commonrt.AsyncRuntime
 
 var (
 	ErrAsyncTaskTimeout  = errors.New("async task timeout")
@@ -60,7 +60,7 @@ func (r *GoroutineRuntime) Spawn(task AsyncTask) Awaitable {
 				value Value
 				err   error
 			}
-			
+
 			// 如果可以使用协程池，通过池提交
 			if usePool {
 				poolTask, err := pm.Submit(pool.IOPool, func() (Value, error) {
@@ -69,13 +69,13 @@ func (r *GoroutineRuntime) Spawn(task AsyncTask) Awaitable {
 				if err != nil {
 					return nil, err
 				}
-				
+
 				done := make(chan taskResult, 1)
 				go func() {
 					v, err := poolTask.Await()
 					done <- taskResult{value: v, err: err}
 				}()
-				
+
 				select {
 				case result := <-done:
 					return result.value, result.err
@@ -83,7 +83,7 @@ func (r *GoroutineRuntime) Spawn(task AsyncTask) Awaitable {
 					return nil, fmt.Errorf("%w after %s", ErrAsyncTaskTimeout, r.options.TaskTimeout)
 				}
 			}
-			
+
 			// Fallback: 使用原始 goroutine
 			done := make(chan taskResult, 1)
 			go func() {
@@ -98,7 +98,7 @@ func (r *GoroutineRuntime) Spawn(task AsyncTask) Awaitable {
 			}
 		})
 	}
-	
+
 	// 不带超时的任务执行
 	if usePool {
 		// 使用协程池
@@ -109,7 +109,7 @@ func (r *GoroutineRuntime) Spawn(task AsyncTask) Awaitable {
 		}
 		return poolTask
 	}
-	
+
 	// Fallback: 使用原始 Promise（创建 goroutine）
 	return NewPromise(task)
 }

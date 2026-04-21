@@ -1,12 +1,17 @@
 package builtin
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	hostapi "iacommon/pkg/host/api"
+	hostfs "iacommon/pkg/host/fs"
+	hostnet "iacommon/pkg/host/network"
+	moduleapi "iacommon/pkg/ialang/module"
 	"ialang/pkg/express"
 	comp "ialang/pkg/lang/compiler"
 	"ialang/pkg/lang/frontend"
@@ -630,6 +635,145 @@ func TestJSONSaveToFileErrorCase(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid path, got nil")
 	}
+}
+
+func TestDefaultModulesWithHostProvidesPlatformFSModule(t *testing.T) {
+	runtime := rt.NewGoroutineRuntime()
+	host := &hostapi.DefaultHost{FS: newBuiltinTestFSProvider(t, false)}
+	modules := DefaultModulesWithHost(runtime, host)
+	fsMod := mustModuleObject(t, modules, moduleapi.PlatformFSModuleName)
+
+	baseDir := "/workspace"
+	filePath := baseDir + "/hello.txt"
+	renamedPath := baseDir + "/renamed.txt"
+	copiedPath := baseDir + "/copied.txt"
+	childDir := baseDir + "/nested"
+
+	if ok := callNative(t, fsMod, "mkdir", childDir, true); ok != true {
+		t.Fatalf("mkdir result = %#v, want true", ok)
+	}
+	if ok := callNative(t, fsMod, "writeFile", filePath, "hello"); ok != true {
+		t.Fatalf("writeFile result = %#v, want true", ok)
+	}
+	if ok := callNative(t, fsMod, "appendFile", filePath, " world"); ok != true {
+		t.Fatalf("appendFile result = %#v, want true", ok)
+	}
+	if content := callNative(t, fsMod, "readFile", filePath); content != "hello world" {
+		t.Fatalf("readFile result = %#v, want hello world", content)
+	}
+	if ok := callNative(t, fsMod, "exists", filePath); ok != true {
+		t.Fatalf("exists result = %#v, want true", ok)
+	}
+
+	entries := callNative(t, fsMod, "readDir", baseDir)
+	entryArr, ok := entries.(Array)
+	if !ok {
+		t.Fatalf("readDir type = %T, want Array", entries)
+	}
+	if len(entryArr) != 2 {
+		t.Fatalf("readDir len = %d, want 2", len(entryArr))
+	}
+
+	stat := mustRuntimeObject(t, callNative(t, fsMod, "stat", filePath), "@platform/fs.stat")
+	if got := stat["name"]; got != "hello.txt" {
+		t.Fatalf("stat name = %#v, want hello.txt", got)
+	}
+
+	if ok := callNative(t, fsMod, "copy", filePath, copiedPath); ok != true {
+		t.Fatalf("copy result = %#v, want true", ok)
+	}
+	if ok := callNative(t, fsMod, "rename", copiedPath, renamedPath); ok != true {
+		t.Fatalf("rename result = %#v, want true", ok)
+	}
+	if ok := callNative(t, fsMod, "remove", renamedPath); ok != true {
+		t.Fatalf("remove result = %#v, want true", ok)
+	}
+	if exists := callNative(t, fsMod, "exists", renamedPath); exists != false {
+		t.Fatalf("exists after remove = %#v, want false", exists)
+	}
+
+	asyncRead := awaitValue(t, callNative(t, fsMod, "readFileAsync", filePath))
+	if asyncRead != "hello world" {
+		t.Fatalf("readFileAsync result = %#v, want hello world", asyncRead)
+	}
+}
+
+func TestDefaultModulesWithHostProvidesPlatformHTTPModule(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("X-Method", "GET")
+			_, _ = w.Write([]byte("get-response"))
+		case http.MethodPost:
+			if got := r.Header.Get("X-Test"); got != "ok" {
+				t.Fatalf("unexpected X-Test header: %q", got)
+			}
+			w.Header().Set("X-Method", "POST")
+			_, _ = w.Write([]byte("post-response"))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	runtime := rt.NewGoroutineRuntime()
+	host := &hostapi.DefaultHost{Network: &hostnet.HTTPProvider{Policy: hostnet.Policy{AllowSchemes: []string{"http", "https"}}}}
+	modules := DefaultModulesWithHost(runtime, host)
+	httpMod := mustModuleObject(t, modules, moduleapi.PlatformHTTPModuleName)
+	client := mustObject(t, httpMod, "client")
+
+	getResp := mustRuntimeObject(t, callNative(t, client, "get", server.URL), "@platform/http.client.get")
+	if got := getResp["status"].(float64); got != http.StatusOK {
+		t.Fatalf("get status = %v, want 200", got)
+	}
+	if got := getResp["body"]; got != "get-response" {
+		t.Fatalf("get body = %#v, want get-response", got)
+	}
+	headers := mustRuntimeObject(t, getResp["headers"], "@platform/http headers")
+	if got := headers["X-Method"]; got != "GET" {
+		t.Fatalf("get header X-Method = %#v, want GET", got)
+	}
+
+	postResp := mustRuntimeObject(t, callNative(t, client, "post", server.URL, Object{
+		"headers": Object{"X-Test": "ok"},
+		"body":    "request-body",
+	}), "@platform/http.client.post")
+	if got := postResp["body"]; got != "post-response" {
+		t.Fatalf("post body = %#v, want post-response", got)
+	}
+
+	requestResp := mustRuntimeObject(t, awaitValue(t, callNative(t, client, "requestAsync", server.URL, Object{
+		"method":    "POST",
+		"headers":   Object{"X-Test": "ok"},
+		"body":      "request-body",
+		"timeoutMs": float64(2000),
+	})), "@platform/http.client.requestAsync")
+	if ok := requestResp["ok"]; ok != true {
+		t.Fatalf("requestAsync ok = %#v, want true", ok)
+	}
+	if got := requestResp["status"].(float64); got != http.StatusOK {
+		t.Fatalf("requestAsync status = %v, want 200", got)
+	}
+}
+
+func newBuiltinTestFSProvider(t *testing.T, readOnly bool) hostfs.Provider {
+	t.Helper()
+
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+
+	mapper, err := hostfs.NewPreopenPathMapper([]hostfs.Preopen{{
+		VirtualPath: "/workspace",
+		RealPath:    root,
+		ReadOnly:    readOnly,
+	}})
+	if err != nil {
+		t.Fatalf("create preopen mapper: %v", err)
+	}
+
+	return &hostfs.LocalFSProvider{Mapper: mapper}
 }
 
 func compileBuiltinTestChunk(t *testing.T, source string) *rt.Chunk {

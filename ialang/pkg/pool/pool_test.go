@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	rttypes "ialang/pkg/lang/runtime/types"
+	commonrt "iacommon/pkg/ialang/runtime"
 )
 
 // testError 测试用错误类型
@@ -37,7 +37,7 @@ func TestGoroutinePoolBasic(t *testing.T) {
 	// 提交任务
 	completed := int32(0)
 	for i := 0; i < 10; i++ {
-		pool.Submit(func() (rttypes.Value, error) {
+		pool.Submit(func() (commonrt.Value, error) {
 			atomic.AddInt32(&completed, 1)
 			return true, nil
 		})
@@ -63,7 +63,7 @@ func TestGoroutinePoolStats(t *testing.T) {
 
 	// 提交一些任务
 	for i := 0; i < 20; i++ {
-		pool.Submit(func() (rttypes.Value, error) {
+		pool.Submit(func() (commonrt.Value, error) {
 			time.Sleep(10 * time.Millisecond)
 			return true, nil
 		})
@@ -92,7 +92,7 @@ func TestGoroutinePoolRetry(t *testing.T) {
 
 	attempt := int32(0)
 
-	task := pool.SubmitWithRetry(func() (rttypes.Value, error) {
+	task := pool.SubmitWithRetry(func() (commonrt.Value, error) {
 		count := atomic.AddInt32(&attempt, 1)
 		if count < 3 {
 			return nil, &testError{msg: "fail"}
@@ -127,7 +127,7 @@ func TestGoroutinePoolShutdown(t *testing.T) {
 
 	// 提交任务
 	for i := 0; i < 5; i++ {
-		pool.Submit(func() (rttypes.Value, error) {
+		pool.Submit(func() (commonrt.Value, error) {
 			time.Sleep(50 * time.Millisecond)
 			return true, nil
 		})
@@ -153,7 +153,7 @@ func TestPoolAsyncRuntime(t *testing.T) {
 	defer runtime.GetPool().Shutdown()
 
 	// 提交任务
-	awaitable := runtime.Spawn(func() (rttypes.Value, error) {
+	awaitable := runtime.Spawn(func() (commonrt.Value, error) {
 		return 42, nil
 	})
 

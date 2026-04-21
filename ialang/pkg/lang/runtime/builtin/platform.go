@@ -1,31 +1,31 @@
 package builtin
 
 import (
-	"context"
-	"sync"
+	"fmt"
 	"time"
 
 	hostapi "iacommon/pkg/host/api"
-	bridgeialang "iavm/pkg/bridge/ialang"
+	moduleapi "iacommon/pkg/ialang/module"
 )
 
 const (
-	platformFSModuleName   = bridgeialang.PlatformFSModuleName
-	platformHTTPModuleName = bridgeialang.PlatformHTTPModuleName
+	platformFSModuleName   = moduleapi.PlatformFSModuleName
+	platformHTTPModuleName = moduleapi.PlatformHTTPModuleName
+)
+
+var (
+	ErrHostNotConfigured       = moduleapi.ErrHostNotConfigured
+	ErrCapabilityNotConfigured = moduleapi.ErrCapabilityNotConfigured
+	ErrInvalidFSResult         = moduleapi.ErrInvalidFSResult
+	ErrInvalidHTTPResult       = moduleapi.ErrInvalidHTTPResult
 )
 
 type lazyPlatformFSBridge struct {
-	host hostapi.Host
-
-	mu     sync.Mutex
-	bridge *bridgeialang.PlatformFSBridge
+	*moduleapi.PlatformFSBridge
 }
 
 type lazyPlatformHTTPBridge struct {
-	host hostapi.Host
-
-	mu     sync.Mutex
-	bridge *bridgeialang.PlatformHTTPBridge
+	*moduleapi.PlatformHTTPBridge
 }
 
 func DefaultModulesWithHost(asyncRuntime AsyncRuntime, host hostapi.Host) map[string]Value {
@@ -36,7 +36,7 @@ func DefaultModulesWithHost(asyncRuntime AsyncRuntime, host hostapi.Host) map[st
 }
 
 func newPlatformFSModule(asyncRuntime AsyncRuntime, host hostapi.Host) Object {
-	bridge := &lazyPlatformFSBridge{host: host}
+	bridge := &lazyPlatformFSBridge{PlatformFSBridge: &moduleapi.PlatformFSBridge{Host: host}}
 
 	readFileFn := NativeFunction(func(args []Value) (Value, error) {
 		if len(args) != 1 {
@@ -280,7 +280,7 @@ func newPlatformFSModule(asyncRuntime AsyncRuntime, host hostapi.Host) Object {
 }
 
 func newPlatformHTTPModule(asyncRuntime AsyncRuntime, host hostapi.Host) Object {
-	bridge := &lazyPlatformHTTPBridge{host: host}
+	bridge := &lazyPlatformHTTPBridge{PlatformHTTPBridge: &moduleapi.PlatformHTTPBridge{Host: host}}
 
 	requestFn := NativeFunction(func(args []Value) (Value, error) {
 		cfg, err := parseHTTPRequestArgs("@platform/http.client.request", args, "GET")
@@ -344,172 +344,43 @@ func newPlatformHTTPModule(asyncRuntime AsyncRuntime, host hostapi.Host) Object 
 	return module
 }
 
-func (b *lazyPlatformFSBridge) ReadFile(path string) (string, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return "", err
-	}
-	return bridge.ReadFile(path)
-}
-
-func (b *lazyPlatformFSBridge) WriteFile(path, content string) (bool, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return false, err
-	}
-	return bridge.WriteFile(path, content)
-}
-
-func (b *lazyPlatformFSBridge) AppendFile(path, content string) (bool, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return false, err
-	}
-	return bridge.AppendFile(path, content)
-}
-
-func (b *lazyPlatformFSBridge) Exists(path string) (bool, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return false, err
-	}
-	return bridge.Exists(path)
-}
-
-func (b *lazyPlatformFSBridge) Mkdir(path string, recursive bool) (bool, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return false, err
-	}
-	return bridge.Mkdir(path, recursive)
-}
-
-func (b *lazyPlatformFSBridge) ReadDir(path string) ([]string, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return nil, err
-	}
-	return bridge.ReadDir(path)
-}
-
-func (b *lazyPlatformFSBridge) Stat(path string) (map[string]any, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return nil, err
-	}
-	return bridge.Stat(path)
-}
-
-func (b *lazyPlatformFSBridge) Rename(oldPath, newPath string) (bool, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return false, err
-	}
-	return bridge.Rename(oldPath, newPath)
-}
-
-func (b *lazyPlatformFSBridge) Remove(path string) (bool, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return false, err
-	}
-	return bridge.Remove(path)
-}
-
-func (b *lazyPlatformFSBridge) RemoveAll(path string) (bool, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return false, err
-	}
-	return bridge.RemoveAll(path)
-}
-
-func (b *lazyPlatformFSBridge) Copy(src, dst string) (bool, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return false, err
-	}
-	return bridge.Copy(src, dst)
-}
-
-func (b *lazyPlatformFSBridge) bridgeForCall() (*bridgeialang.PlatformFSBridge, error) {
-	if b == nil || b.host == nil {
-		return nil, bridgeialang.ErrHostNotConfigured
-	}
-
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.bridge != nil {
-		return b.bridge, nil
-	}
-
-	capability, err := b.host.AcquireCapability(context.Background(), hostapi.AcquireRequest{Kind: hostapi.CapabilityFS})
-	if err != nil {
-		return nil, err
-	}
-	b.bridge = &bridgeialang.PlatformFSBridge{Host: b.host, CapabilityID: capability.ID}
-	return b.bridge, nil
-}
-
 func (b *lazyPlatformHTTPBridge) request(cfg httpRequestConfig) (Value, error) {
-	bridge, err := b.bridgeForCall()
-	if err != nil {
-		return nil, err
-	}
-
-	options := map[string]any{
-		"method":    cfg.Method,
-		"body":      cfg.Body,
-		"timeoutMS": float64(cfg.Timeout / time.Millisecond),
-	}
-	if len(cfg.Headers) > 0 {
-		headers := make(map[string]any, len(cfg.Headers))
-		for key, value := range cfg.Headers {
-			headers[key] = yamlToGoValue(value)
-		}
-		options["headers"] = headers
-	}
-	if cfg.ContentType != "" {
-		headers, _ := options["headers"].(map[string]any)
-		if headers == nil {
-			headers = map[string]any{}
-		}
-		if _, exists := headers["Content-Type"]; !exists && cfg.Body != "" {
-			headers["Content-Type"] = cfg.ContentType
-		}
-		options["headers"] = headers
-	}
-
-	result, err := bridge.Request(cfg.URL, options)
+	result, err := b.PlatformHTTPBridge.Request(cfg.URL, map[string]any{
+		"method":     cfg.Method,
+		"headers":    normalizeRequestHeaders(cfg.Headers),
+		"body":       cfg.Body,
+		"timeoutMS":  int64(cfg.Timeout / time.Millisecond),
+		"timeout_ms": int64(cfg.Timeout / time.Millisecond),
+	})
 	if err != nil {
 		return nil, err
 	}
 	return toRuntimeJSONValue(result), nil
 }
 
-func (b *lazyPlatformHTTPBridge) bridgeForCall() (*bridgeialang.PlatformHTTPBridge, error) {
-	if b == nil || b.host == nil {
-		return nil, bridgeialang.ErrHostNotConfigured
+func normalizeRequestHeaders(headers Object) map[string]string {
+	if len(headers) == 0 {
+		return nil
 	}
 
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.bridge != nil {
-		return b.bridge, nil
+	result := make(map[string]string, len(headers))
+	for key, value := range headers {
+		text, ok := value.(string)
+		if !ok {
+			continue
+		}
+		result[key] = text
 	}
-
-	capability, err := b.host.AcquireCapability(context.Background(), hostapi.AcquireRequest{Kind: hostapi.CapabilityNetwork})
-	if err != nil {
-		return nil, err
+	if len(result) == 0 {
+		return nil
 	}
-	b.bridge = &bridgeialang.PlatformHTTPBridge{Host: b.host, CapabilityID: capability.ID}
-	return b.bridge, nil
+	return result
 }
 
 func errArgCount(name string, got int, want string) error {
-	return bridgeialang.ErrInvalidFSResult
+	return fmt.Errorf("%w: %s expects %s args, got %d", ErrInvalidFSResult, name, want, got)
 }
 
 func errMethod(name, want, got string) error {
-	return bridgeialang.ErrInvalidHTTPResult
+	return fmt.Errorf("%w: %s options.method must be %s, got %s", ErrInvalidHTTPResult, name, want, got)
 }
