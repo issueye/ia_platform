@@ -1,7 +1,9 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
+	"iacommon/pkg/host/api"
 	"iavm/pkg/core"
 )
 
@@ -225,19 +227,65 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		vm.stack.Push(core.Value{Kind: core.ValueFuncRef, Raw: inst.A})
 
 	case core.OpImportCap:
-		// Capability import - push handle
-		vm.stack.Push(core.Value{Kind: core.ValueHostHandle, Raw: inst.A})
+		if vm.options.Host == nil {
+			return fmt.Errorf("no host configured for capability import")
+		}
+		// inst.A = capability kind index, inst.B = config index
+		fn := &vm.mod.Functions[frame.FunctionIndex]
+		var capKind string
+		if int(inst.A) < len(fn.Constants) {
+			if s, ok := fn.Constants[inst.A].(string); ok {
+				capKind = s
+			}
+		}
+		cap, err := vm.options.Host.AcquireCapability(context.Background(), api.AcquireRequest{
+			Kind:   api.CapabilityKind(capKind),
+			Config: map[string]any{},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to acquire capability: %w", err)
+		}
+		// Store capability ID for later use
+		if vm.capabilityIDs == nil {
+			vm.capabilityIDs = make(map[uint32]string)
+		}
+		vm.capabilityIDs[inst.A] = cap.ID
+		vm.stack.Push(core.Value{Kind: core.ValueHostHandle, Raw: cap.ID})
 
 	case core.OpHostCall:
 		if vm.options.Host == nil {
 			return fmt.Errorf("no host configured for host.call")
 		}
-		// Pop operation and args from stack
+		// Pop operation name from stack
 		opVal := vm.stack.Pop()
 		if opVal.Kind != core.ValueString {
 			return fmt.Errorf("host.call operation must be string")
 		}
-		vm.stack.Push(core.Value{Kind: core.ValueNull})
+		opName := opVal.Raw.(string)
+		
+		// Get capability ID from the last imported capability
+		var capID string
+		for _, id := range vm.capabilityIDs {
+			capID = id
+			break
+		}
+		
+		req := api.CallRequest{
+			CapabilityID: capID,
+			Operation:    opName,
+			Args:         map[string]any{},
+		}
+		
+		result, err := vm.options.Host.Call(context.Background(), req)
+		if err != nil {
+			return fmt.Errorf("host.call failed: %w", err)
+		}
+		
+		if result.Value != nil {
+			vm.stack.Push(core.Value{Kind: core.ValueObjectRef, Raw: result.Value})
+		} else {
+			vm.stack.Push(core.Value{Kind: core.ValueNull})
+		}
 
 	case core.OpHostPoll:
 		vm.stack.Push(core.Value{Kind: core.ValueNull})

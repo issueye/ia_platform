@@ -12,15 +12,16 @@ type CompiledFunction struct {
 }
 
 type VM struct {
-	mod       *module.Module
-	options   Options
-	stack     *Stack
-	globals   map[string]core.Value
-	functions []CompiledFunction
-	handles   *HandleTable
-	frames    []*Frame
-	startedAt int64
-	stepCount int64
+	mod           *module.Module
+	options       Options
+	stack         *Stack
+	globals       map[string]core.Value
+	functions     []CompiledFunction
+	handles       *HandleTable
+	frames        []*Frame
+	capabilityIDs map[uint32]string
+	startedAt     int64
+	stepCount     int64
 }
 
 func New(mod *module.Module, opts Options) (*VM, error) {
