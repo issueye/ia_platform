@@ -83,3 +83,14 @@ func (vm *VM) InvokeExport(name string, args ...any) (any, error) {
 	}
 	return nil, fmt.Errorf("export not found: %s", name)
 }
+
+func (vm *VM) PopResult() (core.Value, bool) {
+	if vm.stack.Size() == 0 {
+		return core.Value{}, false
+	}
+	return vm.stack.Pop(), true
+}
+
+func (vm *VM) StackSize() int {
+	return vm.stack.Size()
+}
