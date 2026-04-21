@@ -175,9 +175,11 @@ func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
 			iavmInst = core.Instruction{Op: core.OpJumpIfFalse, A: uint32(inst.A)}
 
 		case bytecode.OpCall:
+			// ialang's OpCall pops function from stack and calls it
+			// iavm's OpCall with A=argCount, B=0 means stack-based call
 			iavmInst.Op = core.OpCall
-			iavmInst.A = uint32(inst.A)
-			iavmInst.B = uint32(inst.B)
+			iavmInst.A = uint32(inst.A) // arg count hint
+			iavmInst.B = 0
 
 		case bytecode.OpReturn:
 			iavmInst.Op = core.OpReturn

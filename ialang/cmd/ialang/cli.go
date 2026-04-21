@@ -14,7 +14,7 @@ type cliCommand struct {
 	helpShown   bool
 }
 
-const usageText = "usage:\n  ialang run <file> [args...]\n  ialang build <entry.ia> [-o output.iapkg]\n  ialang run-pkg <file.iapkg> [args...]\n  ialang build-bin <entry.ia> [-o output.exe]\n  ialang init [dir]\n  ialang check [entry.ia|project-dir]\n  ialang fmt [path]  (path can be a file or directory, defaults to current directory)"
+const usageText = "usage:\n  ialang run <file> [args...]\n  ialang build <entry.ia> [-o output.iapkg]\n  ialang run-pkg <file.iapkg> [args...]\n  ialang build-bin <entry.ia> [-o output.exe]\n  ialang build-iavm <entry.ia> [-o output.iavm]\n  ialang run-iavm <file.iavm>\n  ialang init [dir]\n  ialang check [entry.ia|project-dir]\n  ialang fmt [path]  (path can be a file or directory, defaults to current directory)"
 
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	cmd, err := parseCLIArgs(args)
@@ -70,6 +70,18 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	case "build-iavm":
+		if err := executeBuildIavmCommand(cmd.file, cmd.out, stderr); err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		return 0
+	case "run-iavm":
+		if err := executeRunIavmCommand(cmd.file, stderr); err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		return 0
 	default:
 		fmt.Fprintf(stderr, "unsupported command: %s\n", cmd.name)
 		fmt.Fprintln(stderr, usageText)
@@ -102,6 +114,13 @@ func parseCLIArgs(args []string) (cliCommand, error) {
 		return parseCheckCLIArgs(args)
 	case "fmt":
 		return parseFmtCLIArgs(args)
+	case "build-iavm":
+		return parseBuildIavmCLIArgs(args)
+	case "run-iavm":
+		if len(args) < 3 {
+			return cliCommand{}, fmt.Errorf("run-iavm expects a file argument")
+		}
+		return cliCommand{name: "run-iavm", file: args[2]}, nil
 	default:
 		return cliCommand{}, fmt.Errorf("unsupported command: %s", args[1])
 	}
@@ -200,4 +219,36 @@ func parseFmtCLIArgs(args []string) (cliCommand, error) {
 		target = args[2]
 	}
 	return cliCommand{name: "fmt", file: target}, nil
+}
+
+func parseBuildIavmCLIArgs(args []string) (cliCommand, error) {
+	if len(args) < 3 {
+		return cliCommand{}, fmt.Errorf("build-iavm expects an entry file")
+	}
+	cmd := cliCommand{name: "build-iavm", file: args[2]}
+	remaining := args[3:]
+
+	for i := 0; i < len(remaining); i++ {
+		tok := remaining[i]
+		switch tok {
+		case "-o", "--out":
+			if i+1 >= len(remaining) {
+				return cliCommand{}, fmt.Errorf("build-iavm requires an output file")
+			}
+			i++
+			if cmd.out != "" {
+				return cliCommand{}, fmt.Errorf("output file provided multiple times")
+			}
+			cmd.out = remaining[i]
+		default:
+			if strings.HasPrefix(tok, "-") {
+				return cliCommand{}, fmt.Errorf("unknown build-iavm option: %s", tok)
+			}
+			if cmd.out != "" {
+				return cliCommand{}, fmt.Errorf("too many build-iavm arguments")
+			}
+			cmd.out = tok
+		}
+	}
+	return cmd, nil
 }

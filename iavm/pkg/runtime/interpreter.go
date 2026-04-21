@@ -160,20 +160,54 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 
 	case core.OpCall:
-		fnIdx := inst.A
-		if int(fnIdx) >= len(vm.mod.Functions) {
-			return fmt.Errorf("function index %d out of range", fnIdx)
-		}
-		targetFn := &vm.mod.Functions[fnIdx]
-		newFrame := NewFrame(fnIdx, targetFn, uint32(vm.stack.Size()))
-		// Pop arguments from stack into locals (inst.B = arg count)
-		argCount := int(inst.B)
-		for i := argCount - 1; i >= 0; i-- {
-			if i < len(newFrame.Locals) {
-				newFrame.Locals[i] = vm.stack.Pop()
+		if inst.B > 0 {
+			// Direct function call: A = function index, B = arg count
+			fnIdx := inst.A
+			if int(fnIdx) >= len(vm.mod.Functions) {
+				return fmt.Errorf("function index %d out of range", fnIdx)
 			}
+			targetFn := &vm.mod.Functions[fnIdx]
+			newFrame := NewFrame(fnIdx, targetFn, uint32(vm.stack.Size()))
+			argCount := int(inst.B)
+			for i := argCount - 1; i >= 0; i-- {
+				if i < len(newFrame.Locals) {
+					newFrame.Locals[i] = vm.stack.Pop()
+				}
+			}
+			vm.frames = append(vm.frames, newFrame)
+		} else {
+			// Stack-based call: function on stack, A = arg count
+			fnRef := vm.stack.Pop()
+			var fnIdx uint32
+			switch fnRef.Kind {
+			case core.ValueFuncRef:
+				fnIdx = fnRef.Raw.(uint32)
+			case core.ValueI64:
+				fnIdx = uint32(fnRef.Raw.(int64))
+			case core.ValueString:
+				// Builtin function name - pop args and push null
+				argCount := int(inst.A)
+				for i := 0; i < argCount; i++ {
+					vm.stack.Pop()
+				}
+				vm.stack.Push(core.Value{Kind: core.ValueNull})
+				return nil
+			default:
+				return fmt.Errorf("cannot call value of kind %v", fnRef.Kind)
+			}
+			if int(fnIdx) >= len(vm.mod.Functions) {
+				return fmt.Errorf("function index %d out of range", fnIdx)
+			}
+			targetFn := &vm.mod.Functions[fnIdx]
+			newFrame := NewFrame(fnIdx, targetFn, uint32(vm.stack.Size()))
+			argCount := int(inst.A)
+			for i := argCount - 1; i >= 0; i-- {
+				if i < len(newFrame.Locals) {
+					newFrame.Locals[i] = vm.stack.Pop()
+				}
+			}
+			vm.frames = append(vm.frames, newFrame)
 		}
-		vm.frames = append(vm.frames, newFrame)
 
 	case core.OpReturn:
 		vm.frames = vm.frames[:len(vm.frames)-1]
