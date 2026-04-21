@@ -209,3 +209,42 @@ IAVM 方向已有较清晰设计文档，但代码实现仍偏早期：
 当前仓库已经完成了 `ialang` 运行时基础能力建设，并正在把公共类型、字节码与宿主能力抽到共享层。结合最近提交与现有代码状态，今天最有价值的推进方向不是新增语言语法，而是补上 `ialang -> iavm -> host capability` 这条平台化链路中的关键缺口。
 
 建议今日开发围绕“桥接契约、模块校验、Host ABI 最小闭环”展开，这样既能承接近期重构成果，也能为后续 IAVM 真正落地建立稳定基线。
+
+---
+
+## 7. 实施状态更新（2026-04-21 完成）
+
+### 已完成交付物
+
+| 交付物 | 状态 | 详情 |
+|---|---|---|
+| Binary Encoder/Decoder | ✅ 完成 | iavm/pkg/binary/encoder.go, decoder.go - 完整序列化/反序列化，round-trip 测试通过 |
+| Verifier | ✅ 完成 | iavm/pkg/binary/verifier.go - header/type/function/export/import/capability 校验 |
+| Lowering Bridge | ✅ 完成 | iavm/pkg/bridge/ialang/compiler_lowering.go - ialang 68 opcode 到 iavm 31 opcode 映射 |
+| Runtime Interpreter | ✅ 完成 | iavm/pkg/runtime/interpreter.go - 算术/比较/控制流/函数调用/数组/对象 |
+| Capability Binding | ✅ 完成 | OpImportCap + OpHostCall 完整链路，支持 FS/Network capability |
+| Integration Tests | ✅ 完成 | iavm/pkg/integration/integration_test.go - 全链路端到端测试 |
+
+### 测试统计
+
+- iavm/pkg/binary: 18 tests (encode/decode/verify)
+- iavm/pkg/bridge/ialang: 5 tests (lowering)
+- iavm/pkg/runtime: 15 tests (stack/frame/interpreter/capability)
+- iavm/pkg/integration: 4 tests (full pipeline)
+- ialang: 所有现有测试通过，无回归
+
+### 提交记录
+
+1. feat(iavm): implement binary encoder/decoder/verifier with full test coverage
+2. feat(iavm): implement ialang->iavm lowering bridge with opcode mapping
+3. feat(iavm): implement runtime stack, frame, and interpreter with full test coverage
+4. feat(iavm): implement capability binding with host call support and tests
+5. test(iavm): add end-to-end integration tests for full pipeline
+
+### 下一步建议
+
+1. CLI 集成: 在 ialang/cmd/ialang/ 中新增 build 子命令，支持 .ia -> .iavm 编译输出
+2. 常量池优化: 当前常量在 function 级别存储，可考虑提升到 module 级别去重
+3. 更多 opcode 支持: 当前 lowering 对 ialang 68 opcode 中约 25 个做了完整映射，其余用 Nop 占位
+4. 安全策略: 在 verifier 中增加控制流分析（无限循环检测、跳转目标验证）
+5. 性能优化: interpreter dispatch loop 可考虑使用 computed goto 或 JIT
