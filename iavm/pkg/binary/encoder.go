@@ -43,6 +43,7 @@ func EncodeModule(m *module.Module) ([]byte, error) {
 	encodeSection(&buf, module.SectionFunction, encodeFunctionSection(m))
 	encodeSection(&buf, module.SectionGlobal, encodeGlobalSection(m))
 	encodeSection(&buf, module.SectionExport, encodeExportSection(m))
+	encodeSection(&buf, module.SectionConstant, encodeConstantSection(m))
 	encodeSection(&buf, module.SectionCode, encodeCodeSection(m))
 	encodeSection(&buf, module.SectionData, encodeDataSection(m))
 	encodeSection(&buf, module.SectionCapability, encodeCapabilitySection(m))
@@ -160,10 +161,12 @@ func encodeCodeSection(m *module.Module) []byte {
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.LittleEndian, uint32(len(m.Functions)))
 	for _, fn := range m.Functions {
-		// Encode constants
-		constData := encodeConstants(fn.Constants)
-		binary.Write(&buf, binary.LittleEndian, uint32(len(constData)))
-		buf.Write(constData)
+		if len(m.Constants) == 0 {
+			// Legacy: encode per-function constants
+			constData := encodeConstants(fn.Constants)
+			binary.Write(&buf, binary.LittleEndian, uint32(len(constData)))
+			buf.Write(constData)
+		}
 
 		// Encode instructions
 		instData := encodeInstructions(fn.Code)
@@ -171,6 +174,13 @@ func encodeCodeSection(m *module.Module) []byte {
 		buf.Write(instData)
 	}
 	return buf.Bytes()
+}
+
+func encodeConstantSection(m *module.Module) []byte {
+	if len(m.Constants) == 0 {
+		return nil
+	}
+	return encodeConstants(m.Constants)
 }
 
 const (

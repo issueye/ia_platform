@@ -17,6 +17,11 @@ type Module struct {
 	DataSegments []DataSegment
 	Capabilities []CapabilityDecl
 	Custom       map[string][]byte
+
+	// Constants holds module-level constants used by OpConst instructions.
+	// When non-empty, OpConst references indices into this pool rather than
+	// per-function Constants.
+	Constants []any
 }
 
 type Function struct {

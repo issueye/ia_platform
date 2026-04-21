@@ -47,11 +47,20 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		return nil
 
 	case core.OpConst:
-		fn := &vm.mod.Functions[frame.FunctionIndex]
-		if int(inst.A) >= len(fn.Constants) {
-			return fmt.Errorf("constant index %d out of range", inst.A)
+		var val any
+		if len(vm.mod.Constants) > 0 {
+			if int(inst.A) >= len(vm.mod.Constants) {
+				return fmt.Errorf("module constant index %d out of range (constants: %d)", inst.A, len(vm.mod.Constants))
+			}
+			val = vm.mod.Constants[inst.A]
+		} else {
+			fn := &vm.mod.Functions[frame.FunctionIndex]
+			if int(inst.A) >= len(fn.Constants) {
+				return fmt.Errorf("constant index %d out of range", inst.A)
+			}
+			val = fn.Constants[inst.A]
 		}
-		vm.stack.Push(coreValueFromAny(fn.Constants[inst.A]))
+		vm.stack.Push(coreValueFromAny(val))
 
 	case core.OpLoadLocal:
 		if int(inst.A) >= len(frame.Locals) {

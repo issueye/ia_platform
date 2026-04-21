@@ -61,7 +61,63 @@ func LowerToModule(input any) (*module.Module, error) {
 		}
 	}
 
+	// Build module-level constant pool and remap per-function constant references
+	buildModuleConstantPool(mod)
+
 	return mod, nil
+}
+
+func buildModuleConstantPool(mod *module.Module) {
+	constToIdx := make(map[string]int)
+	var pool []any
+
+	for fi, fn := range mod.Functions {
+		remap := make([]uint32, len(fn.Constants))
+		for ci, c := range fn.Constants {
+			key := constantKey(c)
+			if idx, ok := constToIdx[key]; ok {
+				remap[ci] = uint32(idx)
+			} else {
+				idx := len(pool)
+				pool = append(pool, c)
+				constToIdx[key] = idx
+				remap[ci] = uint32(idx)
+			}
+		}
+
+		// Remap instructions that reference constants
+		for ii, inst := range fn.Code {
+			switch inst.Op {
+			case core.OpConst, core.OpGetProp, core.OpSetProp, core.OpImportFunc:
+				if int(inst.A) < len(remap) {
+					mod.Functions[fi].Code[ii].A = remap[inst.A]
+				}
+			}
+		}
+
+		mod.Functions[fi].Constants = nil
+	}
+
+	mod.Constants = pool
+}
+
+func constantKey(c any) string {
+	switch v := c.(type) {
+	case nil:
+		return "nil"
+	case bool:
+		return fmt.Sprintf("bool:%v", v)
+	case int:
+		return fmt.Sprintf("int:%d", v)
+	case int64:
+		return fmt.Sprintf("int64:%d", v)
+	case float64:
+		return fmt.Sprintf("float64:%v", v)
+	case string:
+		return fmt.Sprintf("str:%s", v)
+	default:
+		return fmt.Sprintf("type:%T val:%v", c, c)
+	}
 }
 
 func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32) module.Function {

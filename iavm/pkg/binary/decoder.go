@@ -75,6 +75,8 @@ func decodeSection(mod *module.Module, id module.SectionID, data []byte) error {
 		return decodeDataSection(mod, d)
 	case module.SectionCapability:
 		return decodeCapabilitySection(mod, d)
+	case module.SectionConstant:
+		return decodeConstantSection(mod, d)
 	default:
 		return nil // skip unknown sections
 	}
@@ -163,14 +165,16 @@ func decodeCodeSection(mod *module.Module, d *decoder) error {
 		if i >= len(mod.Functions) {
 			mod.Functions = append(mod.Functions, module.Function{})
 		}
-		// Decode constants
-		constSize := d.readUint32()
-		constData := d.readBytes(int(constSize))
-		cd := &decoder{data: constData}
-		constCount := cd.readUint32()
-		mod.Functions[i].Constants = make([]any, constCount)
-		for j := 0; j < int(constCount); j++ {
-			mod.Functions[i].Constants[j] = cd.decodeConstant()
+		// Decode constants (legacy format only when no module-level constant pool)
+		if len(mod.Constants) == 0 {
+			constSize := d.readUint32()
+			constData := d.readBytes(int(constSize))
+			cd := &decoder{data: constData}
+			constCount := cd.readUint32()
+			mod.Functions[i].Constants = make([]any, constCount)
+			for j := 0; j < int(constCount); j++ {
+				mod.Functions[i].Constants[j] = cd.decodeConstant()
+			}
 		}
 
 		// Decode instructions
@@ -209,6 +213,15 @@ func (d *decoder) decodeConstant() any {
 	default:
 		return nil
 	}
+}
+
+func decodeConstantSection(mod *module.Module, d *decoder) error {
+	count := d.readUint32()
+	mod.Constants = make([]any, count)
+	for i := 0; i < int(count); i++ {
+		mod.Constants[i] = d.decodeConstant()
+	}
+	return nil
 }
 
 func decodeDataSection(mod *module.Module, d *decoder) error {

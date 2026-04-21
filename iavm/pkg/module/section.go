@@ -11,6 +11,7 @@ const (
 	SectionCode
 	SectionData
 	SectionCapability
+	SectionConstant
 	SectionCustom
 )
 

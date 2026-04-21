@@ -115,7 +115,7 @@ func verifyFunctions(m *module.Module) error {
 			}
 		}
 
-		if err := verifyControlFlow(&fn); err != nil {
+		if err := verifyControlFlow(&fn, m); err != nil {
 			return fmt.Errorf("function[%d]: %w", i, err)
 		}
 
@@ -126,7 +126,7 @@ func verifyFunctions(m *module.Module) error {
 	return nil
 }
 
-func verifyControlFlow(fn *module.Function) error {
+func verifyControlFlow(fn *module.Function, m *module.Module) error {
 	codeLen := len(fn.Code)
 	if codeLen == 0 {
 		return nil
@@ -148,8 +148,14 @@ func verifyControlFlow(fn *module.Function) error {
 			// Global index validation deferred to runtime (globals are dynamic)
 
 		case core.OpConst:
-			if int(inst.A) >= len(fn.Constants) {
-				return fmt.Errorf("instruction[%d]: constant index %d out of range (constants: %d)", i, inst.A, len(fn.Constants))
+			if len(m.Constants) > 0 {
+				if int(inst.A) >= len(m.Constants) {
+					return fmt.Errorf("instruction[%d]: module constant index %d out of range (constants: %d)", i, inst.A, len(m.Constants))
+				}
+			} else {
+				if int(inst.A) >= len(fn.Constants) {
+					return fmt.Errorf("instruction[%d]: constant index %d out of range (constants: %d)", i, inst.A, len(fn.Constants))
+				}
 			}
 
 		case core.OpCall:
@@ -160,8 +166,14 @@ func verifyControlFlow(fn *module.Function) error {
 			}
 
 		case core.OpGetProp, core.OpSetProp:
-			if int(inst.A) >= len(fn.Constants) {
-				return fmt.Errorf("instruction[%d]: property name constant index %d out of range (constants: %d)", i, inst.A, len(fn.Constants))
+			if len(m.Constants) > 0 {
+				if int(inst.A) >= len(m.Constants) {
+					return fmt.Errorf("instruction[%d]: property name constant index %d out of range (module constants: %d)", i, inst.A, len(m.Constants))
+				}
+			} else {
+				if int(inst.A) >= len(fn.Constants) {
+					return fmt.Errorf("instruction[%d]: property name constant index %d out of range (constants: %d)", i, inst.A, len(fn.Constants))
+				}
 			}
 
 		case core.OpPushTry:

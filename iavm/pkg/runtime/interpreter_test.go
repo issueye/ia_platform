@@ -875,3 +875,105 @@ func TestInterpret_IndexString(t *testing.T) {
 		t.Fatalf("expected 'e', got %v", val)
 	}
 }
+
+// TestInterpret_Truthy verifies that OpNot; OpNot (the lowering of OpTruthy)
+// correctly preserves the isTruthy semantic for various value kinds.
+func TestInterpret_Truthy(t *testing.T) {
+	tests := []struct {
+		name     string
+		consts   []any
+		expected bool
+	}{
+		{"truthy_int", []any{int64(42)}, true},
+		{"falsy_int", []any{int64(0)}, false},
+		{"truthy_float", []any{float64(3.14)}, true},
+		{"falsy_float", []any{float64(0.0)}, false},
+		{"truthy_string", []any{"hello"}, true},
+		{"falsy_string", []any{""}, false},
+		{"truthy_bool", []any{true}, true},
+		{"falsy_bool", []any{false}, false},
+		{"null", []any{nil}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mod := &module.Module{
+				Magic:   "IAVM",
+				Version: 1,
+				Target:  "ialang",
+				Types:   []core.FuncType{{}},
+				Functions: []module.Function{
+					{
+						Name:      "entry",
+						TypeIndex: 0,
+						Constants: tt.consts,
+						Code: []core.Instruction{
+							{Op: core.OpConst, A: 0},
+							{Op: core.OpNot},    // !isTruthy(val)
+							{Op: core.OpNot},    // !!isTruthy(val) == isTruthy(val)
+							{Op: core.OpReturn},
+						},
+					},
+				},
+			}
+
+			vm, err := New(mod, Options{})
+			if err != nil {
+				t.Fatalf("New VM failed: %v", err)
+			}
+
+			err = vm.Run()
+			if err != nil {
+				t.Fatalf("Run failed: %v", err)
+			}
+
+			val := vm.stack.Pop()
+			if val.Kind != core.ValueBool || val.Raw.(bool) != tt.expected {
+				t.Fatalf("expected %v, got %v", tt.expected, val)
+			}
+		})
+	}
+}
+
+// TestInterpret_JumpIfTrue verifies that OpNot; OpJumpIfFalse (the lowering of OpJumpIfTrue)
+// correctly jumps when the value is truthy.
+func TestInterpret_JumpIfTrue(t *testing.T) {
+	// If truthy, jump over the falsy branch and return 42; else return 99.
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{int64(42), int64(99), int64(0)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},       // push 42 (truthy value)
+					{Op: core.OpNot},                // !isTruthy(42) = false
+					{Op: core.OpJumpIfFalse, A: 5},  // if !false -> jump to instruction 5
+					{Op: core.OpConst, A: 1},        // push 99 (falsy branch, skipped)
+					{Op: core.OpReturn},             // return 99 (skipped)
+					{Op: core.OpConst, A: 0},        // push 42 (truthy branch)
+					{Op: core.OpReturn},             // return 42
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 42 {
+		t.Fatalf("expected 42, got %v", val)
+	}
+}
