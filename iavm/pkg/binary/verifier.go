@@ -275,7 +275,7 @@ func isValidValueKind(kind core.ValueKind) bool {
 }
 
 func isValidOpcode(op core.OpCode) bool {
-	return op <= core.OpJumpIfNotNullish
+	return op <= core.OpClosure
 }
 
 func verifyStackDepth(fn *module.Function) error {
@@ -316,7 +316,7 @@ func stackDelta(inst core.Instruction) int {
 
 	case core.OpConst, core.OpLoadLocal, core.OpLoadGlobal,
 		core.OpMakeObject, core.OpImportFunc, core.OpImportCap,
-		core.OpHostPoll, core.OpDup:
+		core.OpHostPoll, core.OpDup, core.OpClosure:
 		return 1
 
 	case core.OpStoreLocal, core.OpStoreGlobal, core.OpPop:

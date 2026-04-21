@@ -196,6 +196,9 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			frame.IP = inst.A
 		}
 
+	case core.OpClosure:
+		vm.stack.Push(core.Value{Kind: core.ValueFuncRef, Raw: inst.A})
+
 	case core.OpJumpIfNullish:
 		val := vm.stack.Peek(0)
 		if val.Kind == core.ValueNull {

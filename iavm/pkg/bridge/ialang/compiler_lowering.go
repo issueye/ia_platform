@@ -166,7 +166,7 @@ func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32)
 	if ft.Chunk != nil {
 		constMap := make(map[int]int)
 		fn.Constants, constMap = lowerConstants(ft.Chunk.Constants, ft.Chunk.Code)
-		fn.Code = lowerInstructions(ft.Chunk.Code)
+		fn.Code = lowerInstructions(ft.Chunk.Code, nil)
 
 		// Remap constant indices and names
 		for i, inst := range fn.Code {
@@ -213,7 +213,7 @@ func lowerChunkAsFunction(chunk *bytecode.Chunk, name string) module.Function {
 		TypeIndex: 0,
 	}
 	fn.Constants, _ = lowerConstants(chunk.Constants, chunk.Code)
-	fn.Code = lowerInstructions(chunk.Code)
+	fn.Code = lowerInstructions(chunk.Code, nil)
 	return fn
 }
 
@@ -224,7 +224,7 @@ func lowerChunkAsFunctionWithGlobals(chunk *bytecode.Chunk, name string, globalN
 	}
 	constMap := make(map[int]int)
 	fn.Constants, constMap = lowerConstants(chunk.Constants, chunk.Code)
-	fn.Code = lowerInstructions(chunk.Code)
+	fn.Code = lowerInstructions(chunk.Code, funcIndexMap)
 
 	// Build reverse map: function name -> function index in iavm module
 	nameToFuncIdx := make(map[string]uint32)
@@ -270,11 +270,7 @@ func lowerChunkAsFunctionWithGlobals(chunk *bytecode.Chunk, name string, globalN
 		if inst.Op == core.OpStoreGlobal {
 			if int(remappedA) < len(fn.Constants) {
 				if globalName, ok := fn.Constants[remappedA].(string); ok {
-					// Check if this is a function name - if so, make it a no-op
-					// (functions are already in the module's function list)
-					if _, isFunc := nameToFuncIdx[globalName]; isFunc {
-						fn.Code[i].Op = core.OpNop
-					} else if idx, exists := globalNames[globalName]; exists {
+					if idx, exists := globalNames[globalName]; exists {
 						fn.Code[i].A = idx
 					}
 				}
@@ -349,17 +345,17 @@ func lowerConstants(constants []any, code []bytecode.Instruction) ([]any, map[in
 	return result, indexMap
 }
 
-func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
+func lowerInstructions(ialangInsts []bytecode.Instruction, funcMap map[int]int) []core.Instruction {
 	var iavmInsts []core.Instruction
-
+	
 	for _, inst := range ialangInsts {
 		iavmInst := core.Instruction{}
-
+		
 		switch inst.Op {
 		case bytecode.OpConstant:
 			iavmInst.Op = core.OpConst
 			iavmInst.A = uint32(inst.A)
-
+			
 		case bytecode.OpAdd:
 			iavmInst.Op = core.OpAdd
 
@@ -476,10 +472,16 @@ func lowerInstructions(ialangInsts []bytecode.Instruction) []core.Instruction {
 			iavmInst.Op = core.OpOr
 
 		case bytecode.OpClosure:
-			// Closures are handled by the module's function list
-			// For top-level functions, this is a no-op
-			// For inner closures, we'd need proper upvalue handling
-			iavmInst.Op = core.OpNop
+			if funcMap != nil {
+				if funcIdx, ok := funcMap[inst.A]; ok {
+					iavmInst.Op = core.OpClosure
+					iavmInst.A = uint32(funcIdx)
+				} else {
+					iavmInst.Op = core.OpNop
+				}
+			} else {
+				iavmInst.Op = core.OpNop
+			}
 
 		case bytecode.OpClass:
 			iavmInst.Op = core.OpMakeObject

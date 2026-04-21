@@ -1600,3 +1600,48 @@ func TestInterpret_TryCatch_Unhandled(t *testing.T) {
 		t.Fatal("expected error for unhandled exception")
 	}
 }
+
+func TestInterpret_Closure(t *testing.T) {
+	// OpClosure loads a function reference; OpCall invokes it.
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}, {}},
+		Functions: []module.Function{
+			{
+				Name:      "target",
+				TypeIndex: 0,
+				Constants: []any{int64(42)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpReturn},
+				},
+			},
+			{
+				Name:      "entry",
+				TypeIndex: 1,
+				Code: []core.Instruction{
+					{Op: core.OpClosure, A: 0}, // load function reference to target
+					{Op: core.OpCall, A: 0, B: 0},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 42 {
+		t.Fatalf("expected 42, got %v", val)
+	}
+}

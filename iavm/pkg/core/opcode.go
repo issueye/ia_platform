@@ -53,4 +53,5 @@ const (
 	OpObjectKeys
 	OpJumpIfNullish
 	OpJumpIfNotNullish
+	OpClosure
 )

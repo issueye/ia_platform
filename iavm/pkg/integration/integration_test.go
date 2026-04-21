@@ -643,3 +643,53 @@ func TestFullPipeline_TryCatchExceptionValue(t *testing.T) {
 		t.Fatalf("expected 'bad', got %v", val)
 	}
 }
+
+func TestFullPipeline_FunctionExpression(t *testing.T) {
+	// let f = function() { return 42; }; return f();
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpClosure, A: 0, B: 0},    // load function template
+			{Op: bytecode.OpDefineName, A: 1, B: 0}, // define f
+			{Op: bytecode.OpGetName, A: 1, B: 0},    // load f
+			{Op: bytecode.OpCall, A: 0, B: 0},       // f()
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{
+			&bytecode.FunctionTemplate{
+				Name:   "",
+				Params: []string{},
+				Chunk: &bytecode.Chunk{
+					Code: []bytecode.Instruction{
+						{Op: bytecode.OpConstant, A: 0, B: 0},
+						{Op: bytecode.OpReturn},
+					},
+					Constants: []any{float64(42)},
+				},
+			},
+			"f",
+		},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueF64 || val.Raw.(float64) != 42 {
+		t.Fatalf("expected 42, got %v", val)
+	}
+}
