@@ -419,6 +419,14 @@ allow_hosts = ["example.com"]
 
 - verifier 能阻止明显非法但索引合法的模块进入 runtime。
 
+实施状态（2026-04-22）：
+
+- 已在 `iavm/pkg/binary/verifier.go` 中新增 `verifyStackEffects`，对函数控制流图执行保守栈高度传播分析。
+- 已为 `OpConst`、算术/比较、`OpJump`、`OpJumpIfFalse`、`OpCall`、`OpMakeArray`、`OpDup`、`OpHostCall`、`OpIndex` 等指令补充栈效应规则，并在 direct call 场景校验目标函数参数数量与 `FuncType` 一致。
+- 已新增分支合流栈高度一致性检查、栈下溢检查以及 `MaxStack` 上限检查，阻止“索引合法但执行期会破坏栈语义”的模块进入 runtime。
+- 已在 `iavm/pkg/binary/verifier_test.go` 中补充 `TestVerifyModule_StackUnderflow`、`TestVerifyModule_StackHeightMismatchAtJoin`、`TestVerifyModule_DirectCallArgumentMismatch`、`TestVerifyModule_StackExceedsMaxStack`。
+- 验证结果：`go test ./iavm/pkg/binary/...`、`go test ./iavm/...` 与 `bash scripts/test-all.sh` 全部通过。
+
 ### Task 4：梳理并固化 capability operation 规范
 
 输出物：

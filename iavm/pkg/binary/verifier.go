@@ -9,12 +9,25 @@ import (
 type VerifyOptions struct {
 	RequireEntry bool
 	AllowCustom  bool
+
+	MaxFunctions           int
+	MaxConstants           int
+	MaxCodeSizePerFunction int
+	MaxLocalsPerFunction   int
+	MaxStackPerFunction    int
+	AllowedCapabilities    []module.CapabilityKind
 }
 
 func VerifyModule(m *module.Module, opts VerifyOptions) (*VerifyResult, error) {
 	result := &VerifyResult{Valid: true}
 
 	if err := verifyHeader(m); err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, err.Error())
+		return result, err
+	}
+
+	if err := verifyResourceLimits(m, opts); err != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, err.Error())
 		return result, err
@@ -50,7 +63,7 @@ func VerifyModule(m *module.Module, opts VerifyOptions) (*VerifyResult, error) {
 		return result, err
 	}
 
-	if err := verifyCapabilities(m); err != nil {
+	if err := verifyCapabilities(m, opts); err != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, err.Error())
 		return result, err
@@ -76,6 +89,30 @@ func verifyHeader(m *module.Module) error {
 	}
 	if m.Target == "" {
 		return fmt.Errorf("empty target")
+	}
+	return nil
+}
+
+func verifyResourceLimits(m *module.Module, opts VerifyOptions) error {
+	if opts.MaxFunctions > 0 && len(m.Functions) > opts.MaxFunctions {
+		return fmt.Errorf("function count %d exceeds limit %d", len(m.Functions), opts.MaxFunctions)
+	}
+	if opts.MaxConstants > 0 && len(m.Constants) > opts.MaxConstants {
+		return fmt.Errorf("module constant count %d exceeds limit %d", len(m.Constants), opts.MaxConstants)
+	}
+	for i, fn := range m.Functions {
+		if opts.MaxCodeSizePerFunction > 0 && len(fn.Code) > opts.MaxCodeSizePerFunction {
+			return fmt.Errorf("function[%d]: code size %d exceeds limit %d", i, len(fn.Code), opts.MaxCodeSizePerFunction)
+		}
+		if opts.MaxLocalsPerFunction > 0 && len(fn.Locals) > opts.MaxLocalsPerFunction {
+			return fmt.Errorf("function[%d]: local count %d exceeds limit %d", i, len(fn.Locals), opts.MaxLocalsPerFunction)
+		}
+		if opts.MaxConstants > 0 && len(m.Constants) == 0 && len(fn.Constants) > opts.MaxConstants {
+			return fmt.Errorf("function[%d]: constant count %d exceeds limit %d", i, len(fn.Constants), opts.MaxConstants)
+		}
+		if opts.MaxStackPerFunction > 0 && fn.MaxStack > uint32(opts.MaxStackPerFunction) {
+			return fmt.Errorf("function[%d]: declared max stack %d exceeds limit %d", i, fn.MaxStack, opts.MaxStackPerFunction)
+		}
 	}
 	return nil
 }
@@ -122,10 +159,18 @@ func verifyFunctions(m *module.Module) error {
 		if err := verifyConstantRefs(&fn); err != nil {
 			return fmt.Errorf("function[%d]: %w", i, err)
 		}
+<<<<<<< HEAD
 
 		if err := verifyStackDepth(&fn); err != nil {
 			return fmt.Errorf("function[%d]: %w", i, err)
 		}
+||||||| parent of 93cf715 (feat(iavm): 添加模块验证、资源限制和CLI命令支持)
+=======
+
+		if err := verifyStackEffects(i, &fn, m); err != nil {
+			return fmt.Errorf("function[%d]: %w", i, err)
+		}
+>>>>>>> 93cf715 (feat(iavm): 添加模块验证、资源限制和CLI命令支持)
 	}
 	return nil
 }
@@ -190,6 +235,141 @@ func verifyControlFlow(fn *module.Function, m *module.Module) error {
 	return nil
 }
 
+func verifyStackEffects(fnIndex int, fn *module.Function, m *module.Module) error {
+	codeLen := len(fn.Code)
+	if codeLen == 0 {
+		return nil
+	}
+
+	entryHeight := 0
+	stackHeights := make([]int, codeLen)
+	for i := range stackHeights {
+		stackHeights[i] = -1
+	}
+
+	worklist := []int{0}
+	stackHeights[0] = entryHeight
+
+	for len(worklist) > 0 {
+		pc := worklist[len(worklist)-1]
+		worklist = worklist[:len(worklist)-1]
+
+		inst := fn.Code[pc]
+		height := stackHeights[pc]
+
+		nextHeight, err := applyStackEffect(inst, height, pc, fn, m)
+		if err != nil {
+			return err
+		}
+		if fn.MaxStack > 0 && nextHeight > int(fn.MaxStack) {
+			return fmt.Errorf("instruction[%d]: stack height %d exceeds max stack %d", pc, nextHeight, fn.MaxStack)
+		}
+
+		for _, nextPC := range stackSuccessors(inst, pc, codeLen) {
+			if nextPC < 0 || nextPC >= codeLen {
+				continue
+			}
+			if stackHeights[nextPC] == -1 {
+				stackHeights[nextPC] = nextHeight
+				worklist = append(worklist, nextPC)
+				continue
+			}
+			if stackHeights[nextPC] != nextHeight {
+				return fmt.Errorf("instruction[%d]: stack height mismatch at target %d: existing %d, incoming %d", pc, nextPC, stackHeights[nextPC], nextHeight)
+			}
+		}
+	}
+
+	return nil
+}
+
+func applyStackEffect(inst core.Instruction, height int, pc int, fn *module.Function, m *module.Module) (int, error) {
+	pop, push, err := stackEffect(inst, m)
+	if err != nil {
+		return height, fmt.Errorf("instruction[%d]: %w", pc, err)
+	}
+	if height < pop {
+		return height, fmt.Errorf("instruction[%d]: stack underflow: need %d value(s), have %d", pc, pop, height)
+	}
+	return height - pop + push, nil
+}
+
+func stackEffect(inst core.Instruction, m *module.Module) (int, int, error) {
+	switch inst.Op {
+	case core.OpNop, core.OpJump, core.OpPushTry, core.OpPopTry:
+		return 0, 0, nil
+	case core.OpConst, core.OpLoadLocal, core.OpLoadGlobal, core.OpMakeObject, core.OpImportFunc, core.OpImportCap, core.OpHostPoll:
+		return 0, 1, nil
+	case core.OpStoreLocal, core.OpStoreGlobal, core.OpJumpIfFalse, core.OpPop, core.OpThrow:
+		return 1, 0, nil
+	case core.OpHostCall:
+		return 1, 1, nil
+	case core.OpNeg, core.OpNot, core.OpTypeof:
+		return 1, 1, nil
+	case core.OpDup:
+		return 1, 2, nil
+	case core.OpAdd, core.OpSub, core.OpMul, core.OpDiv, core.OpMod,
+		core.OpEq, core.OpNe, core.OpLt, core.OpGt, core.OpLe, core.OpGe,
+		core.OpBitAnd, core.OpBitOr, core.OpBitXor, core.OpShl, core.OpShr,
+		core.OpAnd, core.OpOr, core.OpIndex:
+		return 2, 1, nil
+	case core.OpMakeArray:
+		return int(inst.A), 1, nil
+	case core.OpGetProp:
+		return 1, 1, nil
+	case core.OpSetProp:
+		return 2, 0, nil
+	case core.OpCall:
+		return callStackEffect(inst, m)
+	case core.OpReturn:
+		return 0, 0, nil
+	default:
+		return 0, 0, fmt.Errorf("unknown opcode %v", inst.Op)
+	}
+}
+
+func callStackEffect(inst core.Instruction, m *module.Module) (int, int, error) {
+	if inst.B > 0 {
+		fnIndex := int(inst.A)
+		if fnIndex >= len(m.Functions) {
+			return 0, 0, fmt.Errorf("function index %d out of range (functions: %d)", inst.A, len(m.Functions))
+		}
+		target := m.Functions[fnIndex]
+		if int(target.TypeIndex) >= len(m.Types) {
+			return 0, 0, fmt.Errorf("call target function %d type index %d out of range", fnIndex, target.TypeIndex)
+		}
+		ft := m.Types[target.TypeIndex]
+		argCount := int(inst.B)
+		if argCount != len(ft.Params) {
+			return 0, 0, fmt.Errorf("call target function %d expects %d argument(s), got %d", fnIndex, len(ft.Params), argCount)
+		}
+		return argCount, len(ft.Results), nil
+	}
+
+	argCount := int(inst.A)
+	return argCount + 1, 1, nil
+}
+
+func stackSuccessors(inst core.Instruction, pc int, codeLen int) []int {
+	next := pc + 1
+	switch inst.Op {
+	case core.OpJump:
+		return []int{int(inst.A)}
+	case core.OpJumpIfFalse:
+		if next < codeLen {
+			return []int{int(inst.A), next}
+		}
+		return []int{int(inst.A)}
+	case core.OpReturn, core.OpThrow:
+		return nil
+	default:
+		if next < codeLen {
+			return []int{next}
+		}
+		return nil
+	}
+}
+
 func verifyConstantRefs(fn *module.Function) error {
 	for i, c := range fn.Constants {
 		if ft, ok := c.(*module.Function); ok {
@@ -240,10 +420,18 @@ func verifyGlobals(m *module.Module) error {
 	return nil
 }
 
-func verifyCapabilities(m *module.Module) error {
+func verifyCapabilities(m *module.Module, opts VerifyOptions) error {
+	allowed := make(map[module.CapabilityKind]bool, len(opts.AllowedCapabilities))
+	for _, kind := range opts.AllowedCapabilities {
+		allowed[kind] = true
+	}
+
 	for i, cap := range m.Capabilities {
 		if cap.Kind != module.CapabilityFS && cap.Kind != module.CapabilityNetwork {
 			return fmt.Errorf("capability[%d]: invalid kind %q", i, cap.Kind)
+		}
+		if len(allowed) > 0 && !allowed[cap.Kind] {
+			return fmt.Errorf("capability[%d]: kind %q is not allowed", i, cap.Kind)
 		}
 	}
 	return nil

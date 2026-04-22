@@ -1,9 +1,9 @@
 package binary
 
 import (
-	"testing"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
+	"testing"
 )
 
 func TestVerifyModule_ValidMinimal(t *testing.T) {
@@ -299,6 +299,7 @@ func TestVerifyModule_ValidControlFlow(t *testing.T) {
 		t.Fatalf("expected valid module, got errors: %v", result.Errors)
 	}
 }
+<<<<<<< HEAD
 
 func TestVerifyModule_StackUnderflow(t *testing.T) {
 	mod := &module.Module{
@@ -350,3 +351,222 @@ func TestVerifyModule_StackOverflow(t *testing.T) {
 		t.Fatal("expected error for stack overflow")
 	}
 }
+||||||| parent of 93cf715 (feat(iavm): 添加模块验证、资源限制和CLI命令支持)
+=======
+
+func TestVerifyModule_StackUnderflow(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "test",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpAdd},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for stack underflow")
+	}
+}
+
+func TestVerifyModule_StackHeightMismatchAtJoin(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "test",
+				TypeIndex: 0,
+				Constants: []any{false, int64(1)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpJumpIfFalse, A: 4},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpJump, A: 4},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for stack height mismatch")
+	}
+}
+
+func TestVerifyModule_DirectCallArgumentMismatch(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types: []core.FuncType{
+			{Params: []core.ValueKind{core.ValueI64, core.ValueI64}, Results: []core.ValueKind{core.ValueI64}},
+			{},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "add",
+				TypeIndex: 0,
+				Locals:    []core.ValueKind{core.ValueI64, core.ValueI64},
+				Code: []core.Instruction{
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpLoadLocal, A: 1},
+					{Op: core.OpAdd},
+					{Op: core.OpReturn},
+				},
+			},
+			{
+				Name:      "entry",
+				TypeIndex: 1,
+				Constants: []any{int64(5)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpCall, A: 0, B: 1},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for direct call argument mismatch")
+	}
+}
+
+func TestVerifyModule_StackExceedsMaxStack(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "test",
+				TypeIndex: 0,
+				Constants: []any{int64(1), int64(2)},
+				MaxStack:  1,
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected error for max stack overflow")
+	}
+}
+
+func TestVerifyModule_ResourceLimitsAllowValidModule(t *testing.T) {
+	mod := resourceLimitTestModule()
+
+	opts := VerifyOptions{
+		MaxFunctions:           2,
+		MaxConstants:           2,
+		MaxCodeSizePerFunction: 4,
+		MaxLocalsPerFunction:   2,
+		MaxStackPerFunction:    3,
+	}
+	if _, err := VerifyModule(mod, opts); err != nil {
+		t.Fatalf("expected resource limits to allow module, got %v", err)
+	}
+}
+
+func TestVerifyModule_ResourceLimitFailures(t *testing.T) {
+	cases := []struct {
+		name string
+		opts VerifyOptions
+	}{
+		{name: "max functions", opts: VerifyOptions{MaxFunctions: 1}},
+		{name: "max constants", opts: VerifyOptions{MaxConstants: 1}},
+		{name: "max code size", opts: VerifyOptions{MaxCodeSizePerFunction: 3}},
+		{name: "max locals", opts: VerifyOptions{MaxLocalsPerFunction: 1}},
+		{name: "max stack declaration", opts: VerifyOptions{MaxStackPerFunction: 2}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mod := resourceLimitTestModule()
+			if tc.name == "max functions" {
+				tc.opts.MaxFunctions = 0
+				if _, err := VerifyModule(mod, tc.opts); err != nil {
+					t.Fatalf("zero max functions should mean unlimited, got %v", err)
+				}
+				tc.opts.MaxFunctions = len(mod.Functions) - 1
+			}
+			if _, err := VerifyModule(mod, tc.opts); err == nil {
+				t.Fatalf("expected %s limit error", tc.name)
+			}
+		})
+	}
+}
+
+func TestVerifyModule_PerFunctionConstantLimit(t *testing.T) {
+	mod := resourceLimitTestModule()
+	mod.Constants = nil
+	mod.Functions[0].Constants = []any{int64(1), int64(2)}
+
+	if _, err := VerifyModule(mod, VerifyOptions{MaxConstants: 1}); err == nil {
+		t.Fatal("expected per-function constant limit error")
+	}
+}
+
+func TestVerifyModule_CapabilityAllowlist(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+	}
+
+	if _, err := VerifyModule(mod, VerifyOptions{AllowedCapabilities: []module.CapabilityKind{module.CapabilityFS}}); err != nil {
+		t.Fatalf("expected fs capability to be allowed, got %v", err)
+	}
+	if _, err := VerifyModule(mod, VerifyOptions{AllowedCapabilities: []module.CapabilityKind{module.CapabilityNetwork}}); err == nil {
+		t.Fatal("expected fs capability to be denied by allowlist")
+	}
+}
+
+func resourceLimitTestModule() *module.Module {
+	return &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{int64(1), int64(2)},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Locals:    []core.ValueKind{core.ValueI64, core.ValueI64},
+				MaxStack:  3,
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpAdd},
+					{Op: core.OpReturn},
+				},
+			},
+			{
+				Name:      "helper",
+				TypeIndex: 0,
+				Code:      []core.Instruction{{Op: core.OpReturn}},
+			},
+		},
+	}
+}
+>>>>>>> 93cf715 (feat(iavm): 添加模块验证、资源限制和CLI命令支持)

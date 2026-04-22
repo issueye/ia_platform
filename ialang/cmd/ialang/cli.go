@@ -3,18 +3,30 @@ package main
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+
+	"iavm/pkg/module"
 )
 
 type cliCommand struct {
-	name        string
-	file        string
-	out         string
-	args        []string
-	helpShown   bool
+	name                string
+	file                string
+	out                 string
+	args                []string
+	strict              bool
+	verbose             bool
+	profile             string
+	maxFunctions        int
+	maxConstants        int
+	maxCodeSize         int
+	maxLocals           int
+	maxStack            int
+	allowedCapabilities []module.CapabilityKind
+	helpShown           bool
 }
 
-const usageText = "usage:\n  ialang run <file> [args...]\n  ialang build <entry.ia> [-o output.iapkg]\n  ialang run-pkg <file.iapkg> [args...]\n  ialang build-bin <entry.ia> [-o output.exe]\n  ialang build-iavm <entry.ia> [-o output.iavm]\n  ialang run-iavm <file.iavm>\n  ialang init [dir]\n  ialang check [entry.ia|project-dir]\n  ialang fmt [path]  (path can be a file or directory, defaults to current directory)"
+const usageText = "usage:\n  ialang run <file> [args...]\n  ialang build <entry.ia> [-o output.iapkg]\n  ialang run-pkg <file.iapkg> [args...]\n  ialang build-bin <entry.ia> [-o output.exe]\n  ialang build-iavm <entry.ia> [-o output.iavm]\n  ialang verify-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang inspect-iavm <file.iavm> [--verbose]\n  ialang run-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang init [dir]\n  ialang check [entry.ia|project-dir]\n  ialang fmt [path]  (path can be a file or directory, defaults to current directory)"
 
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	cmd, err := parseCLIArgs(args)
@@ -76,8 +88,20 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	case "verify-iavm":
+		if err := executeVerifyIavmCommand(cmd, stdout, stderr); err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		return 0
+	case "inspect-iavm":
+		if err := executeInspectIavmCommand(cmd.file, cmd.verbose, stdout, stderr); err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		return 0
 	case "run-iavm":
-		if err := executeRunIavmCommand(cmd.file, stderr); err != nil {
+		if err := executeRunIavmCommand(cmd, stderr); err != nil {
 			fmt.Fprintln(stderr, err.Error())
 			return 1
 		}
@@ -116,11 +140,12 @@ func parseCLIArgs(args []string) (cliCommand, error) {
 		return parseFmtCLIArgs(args)
 	case "build-iavm":
 		return parseBuildIavmCLIArgs(args)
+	case "verify-iavm":
+		return parseIavmVerifyCLIArgs("verify-iavm", args)
+	case "inspect-iavm":
+		return parseInspectIavmCLIArgs(args)
 	case "run-iavm":
-		if len(args) < 3 {
-			return cliCommand{}, fmt.Errorf("run-iavm expects a file argument")
-		}
-		return cliCommand{name: "run-iavm", file: args[2]}, nil
+		return parseIavmVerifyCLIArgs("run-iavm", args)
 	default:
 		return cliCommand{}, fmt.Errorf("unsupported command: %s", args[1])
 	}
@@ -194,7 +219,7 @@ func parseFmtCLIArgs(args []string) (cliCommand, error) {
 	if len(args) > 3 {
 		return cliCommand{}, fmt.Errorf("fmt expects at most one path argument")
 	}
-	
+
 	// Handle --help and -h flags
 	if len(args) == 3 && (args[2] == "--help" || args[2] == "-h") {
 		fmt.Println("Format .ia source files")
@@ -213,7 +238,7 @@ func parseFmtCLIArgs(args []string) (cliCommand, error) {
 		// Return a special command to indicate help was shown
 		return cliCommand{name: "fmt", file: "", helpShown: true}, nil
 	}
-	
+
 	target := "."
 	if len(args) == 3 {
 		target = args[2]
@@ -248,6 +273,134 @@ func parseBuildIavmCLIArgs(args []string) (cliCommand, error) {
 				return cliCommand{}, fmt.Errorf("too many build-iavm arguments")
 			}
 			cmd.out = tok
+		}
+	}
+	return cmd, nil
+}
+
+func parseIavmVerifyCLIArgs(command string, args []string) (cliCommand, error) {
+	if len(args) < 3 {
+		return cliCommand{}, fmt.Errorf("%s expects a file argument", command)
+	}
+	cmd := cliCommand{name: command, file: args[2]}
+	remaining := args[3:]
+
+	for i := 0; i < len(remaining); i++ {
+		tok := remaining[i]
+		switch tok {
+		case "--profile":
+			profile, err := parseIavmProfileOption(command, tok, remaining, &i)
+			if err != nil {
+				return cliCommand{}, err
+			}
+			if cmd.profile != "" {
+				return cliCommand{}, fmt.Errorf("profile provided multiple times")
+			}
+			cmd.profile = profile
+		case "--strict":
+			if cmd.strict {
+				return cliCommand{}, fmt.Errorf("strict mode provided multiple times")
+			}
+			cmd.strict = true
+		case "--max-functions":
+			value, err := parsePositiveIntOption(command, tok, remaining, &i)
+			if err != nil {
+				return cliCommand{}, err
+			}
+			cmd.maxFunctions = value
+		case "--max-constants":
+			value, err := parsePositiveIntOption(command, tok, remaining, &i)
+			if err != nil {
+				return cliCommand{}, err
+			}
+			cmd.maxConstants = value
+		case "--max-code-size":
+			value, err := parsePositiveIntOption(command, tok, remaining, &i)
+			if err != nil {
+				return cliCommand{}, err
+			}
+			cmd.maxCodeSize = value
+		case "--max-locals":
+			value, err := parsePositiveIntOption(command, tok, remaining, &i)
+			if err != nil {
+				return cliCommand{}, err
+			}
+			cmd.maxLocals = value
+		case "--max-stack":
+			value, err := parsePositiveIntOption(command, tok, remaining, &i)
+			if err != nil {
+				return cliCommand{}, err
+			}
+			cmd.maxStack = value
+		case "--allow-capability":
+			capability, err := parseCapabilityOption(command, tok, remaining, &i)
+			if err != nil {
+				return cliCommand{}, err
+			}
+			cmd.allowedCapabilities = append(cmd.allowedCapabilities, capability)
+		default:
+			return cliCommand{}, fmt.Errorf("unknown %s option: %s", command, tok)
+		}
+	}
+	return cmd, nil
+}
+
+func parsePositiveIntOption(command, option string, args []string, index *int) (int, error) {
+	if *index+1 >= len(args) {
+		return 0, fmt.Errorf("%s requires a value for %s", command, option)
+	}
+	*index++
+	value, err := strconv.Atoi(args[*index])
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("%s requires a positive integer for %s", command, option)
+	}
+	return value, nil
+}
+
+func parseCapabilityOption(command, option string, args []string, index *int) (module.CapabilityKind, error) {
+	if *index+1 >= len(args) {
+		return "", fmt.Errorf("%s requires a value for %s", command, option)
+	}
+	*index++
+	switch args[*index] {
+	case string(module.CapabilityFS):
+		return module.CapabilityFS, nil
+	case string(module.CapabilityNetwork):
+		return module.CapabilityNetwork, nil
+	default:
+		return "", fmt.Errorf("%s requires a supported capability for %s", command, option)
+	}
+}
+
+func parseIavmProfileOption(command, option string, args []string, index *int) (string, error) {
+	if *index+1 >= len(args) {
+		return "", fmt.Errorf("%s requires a value for %s", command, option)
+	}
+	*index++
+	switch args[*index] {
+	case "default", "strict", "sandbox":
+		return args[*index], nil
+	default:
+		return "", fmt.Errorf("%s requires a supported profile for %s", command, option)
+	}
+}
+
+func parseInspectIavmCLIArgs(args []string) (cliCommand, error) {
+	if len(args) < 3 {
+		return cliCommand{}, fmt.Errorf("inspect-iavm expects a file argument")
+	}
+	cmd := cliCommand{name: "inspect-iavm", file: args[2]}
+	remaining := args[3:]
+
+	for _, tok := range remaining {
+		switch tok {
+		case "--verbose":
+			if cmd.verbose {
+				return cliCommand{}, fmt.Errorf("verbose mode provided multiple times")
+			}
+			cmd.verbose = true
+		default:
+			return cliCommand{}, fmt.Errorf("unknown inspect-iavm option: %s", tok)
 		}
 	}
 	return cmd, nil
