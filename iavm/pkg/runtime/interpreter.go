@@ -71,18 +71,9 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		return nil
 
 	case core.OpConst:
-		var val any
-		if len(vm.mod.Constants) > 0 {
-			if int(inst.A) >= len(vm.mod.Constants) {
-				return fmt.Errorf("module constant index %d out of range (constants: %d)", inst.A, len(vm.mod.Constants))
-			}
-			val = vm.mod.Constants[inst.A]
-		} else {
-			fn := &vm.mod.Functions[frame.FunctionIndex]
-			if int(inst.A) >= len(fn.Constants) {
-				return fmt.Errorf("constant index %d out of range", inst.A)
-			}
-			val = fn.Constants[inst.A]
+		val, err := vm.constantAt(frame, inst.A)
+		if err != nil {
+			return err
 		}
 		vm.stack.Push(coreValueFromAny(val))
 
@@ -292,6 +283,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if obj.Kind != core.ValueObjectRef {
 			return fmt.Errorf("cannot get property from non-object")
 		}
+<<<<<<< HEAD
 		var name string
 		var ok bool
 		fn := &vm.mod.Functions[frame.FunctionIndex]
@@ -299,7 +291,22 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			name, ok = fn.Constants[inst.A].(string)
 		} else if len(vm.mod.Constants) > 0 && int(inst.A) < len(vm.mod.Constants) {
 			name, ok = vm.mod.Constants[inst.A].(string)
+||||||| parent of 31c1c08 (feat(iavm): 添加统一测试脚本和端到端测试用例)
+		fn := &vm.mod.Functions[frame.FunctionIndex]
+		if int(inst.A) >= len(fn.Constants) {
+			return fmt.Errorf("property name constant index %d out of range", inst.A)
+=======
+		nameVal, err := vm.constantAt(frame, inst.A)
+		if err != nil {
+			return fmt.Errorf("property name constant lookup failed: %w", err)
+>>>>>>> 31c1c08 (feat(iavm): 添加统一测试脚本和端到端测试用例)
 		}
+<<<<<<< HEAD
+||||||| parent of 31c1c08 (feat(iavm): 添加统一测试脚本和端到端测试用例)
+		name, ok := fn.Constants[inst.A].(string)
+=======
+		name, ok := nameVal.(string)
+>>>>>>> 31c1c08 (feat(iavm): 添加统一测试脚本和端到端测试用例)
 		if !ok {
 			return fmt.Errorf("property name at index %d is not a string", inst.A)
 		}
@@ -312,6 +319,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if obj.Kind != core.ValueObjectRef {
 			return fmt.Errorf("cannot set property on non-object")
 		}
+<<<<<<< HEAD
 		var name string
 		var ok bool
 		fn := &vm.mod.Functions[frame.FunctionIndex]
@@ -319,7 +327,22 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			name, ok = fn.Constants[inst.A].(string)
 		} else if len(vm.mod.Constants) > 0 && int(inst.A) < len(vm.mod.Constants) {
 			name, ok = vm.mod.Constants[inst.A].(string)
+||||||| parent of 31c1c08 (feat(iavm): 添加统一测试脚本和端到端测试用例)
+		fn := &vm.mod.Functions[frame.FunctionIndex]
+		if int(inst.A) >= len(fn.Constants) {
+			return fmt.Errorf("property name constant index %d out of range", inst.A)
+=======
+		nameVal, err := vm.constantAt(frame, inst.A)
+		if err != nil {
+			return fmt.Errorf("property name constant lookup failed: %w", err)
+>>>>>>> 31c1c08 (feat(iavm): 添加统一测试脚本和端到端测试用例)
 		}
+<<<<<<< HEAD
+||||||| parent of 31c1c08 (feat(iavm): 添加统一测试脚本和端到端测试用例)
+		name, ok := fn.Constants[inst.A].(string)
+=======
+		name, ok := nameVal.(string)
+>>>>>>> 31c1c08 (feat(iavm): 添加统一测试脚本和端到端测试用例)
 		if !ok {
 			return fmt.Errorf("property name at index %d is not a string", inst.A)
 		}
@@ -366,25 +389,25 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			return fmt.Errorf("host.call operation must be string")
 		}
 		opName := opVal.Raw.(string)
-		
+
 		// Get capability ID from the last imported capability
 		var capID string
 		for _, id := range vm.capabilityIDs {
 			capID = id
 			break
 		}
-		
+
 		req := api.CallRequest{
 			CapabilityID: capID,
 			Operation:    opName,
 			Args:         map[string]any{},
 		}
-		
+
 		result, err := vm.options.Host.Call(context.Background(), req)
 		if err != nil {
 			return fmt.Errorf("host.call failed: %w", err)
 		}
-		
+
 		if result.Value != nil {
 			vm.stack.Push(core.Value{Kind: core.ValueObjectRef, Raw: result.Value})
 		} else {
@@ -511,6 +534,21 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 	}
 
 	return nil
+}
+
+func (vm *VM) constantAt(frame *Frame, index uint32) (any, error) {
+	if len(vm.mod.Constants) > 0 {
+		if int(index) >= len(vm.mod.Constants) {
+			return nil, fmt.Errorf("module constant index %d out of range (constants: %d)", index, len(vm.mod.Constants))
+		}
+		return vm.mod.Constants[index], nil
+	}
+
+	fn := &vm.mod.Functions[frame.FunctionIndex]
+	if int(index) >= len(fn.Constants) {
+		return nil, fmt.Errorf("constant index %d out of range", index)
+	}
+	return fn.Constants[index], nil
 }
 
 func coreValueFromAny(v any) core.Value {

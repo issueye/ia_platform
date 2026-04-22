@@ -6,12 +6,53 @@ import (
 
 	"iacommon/pkg/host/api"
 	"iacommon/pkg/ialang/bytecode"
-	bridge_ialang "iavm/pkg/bridge/ialang"
 	"iavm/pkg/binary"
+	bridge_ialang "iavm/pkg/bridge/ialang"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
 	"iavm/pkg/runtime"
 )
+
+func runIalangChunkPipeline(t *testing.T, chunk *bytecode.Chunk) core.Value {
+	t.Helper()
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule failed: %v", err)
+	}
+
+	decoded, err := binary.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("DecodeModule failed: %v", err)
+	}
+
+	result, err := binary.VerifyModule(decoded, binary.VerifyOptions{RequireEntry: true})
+	if err != nil {
+		t.Fatalf("VerifyModule failed: %v", err)
+	}
+	if !result.Valid {
+		t.Fatalf("module verification failed: %v", result.Errors)
+	}
+
+	vm, err := runtime.New(decoded, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("VM.Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	return val
+}
 
 func TestFullPipeline_CompileToLowerToRun(t *testing.T) {
 	// 1. Create ialang chunk (simulating compiled output)
@@ -253,6 +294,98 @@ func TestFullPipeline_ExecutionWithMultipleFunctions(t *testing.T) {
 	}
 }
 
+func TestFullPipeline_ControlFlowBranch(t *testing.T) {
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpConstant, A: 0, B: 0},
+			{Op: bytecode.OpJumpIfFalse, A: 4, B: 0},
+			{Op: bytecode.OpConstant, A: 1, B: 0},
+			{Op: bytecode.OpReturn},
+			{Op: bytecode.OpConstant, A: 2, B: 0},
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{false, int64(99), int64(42)},
+	}
+
+	val := runIalangChunkPipeline(t, chunk)
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 42 {
+		t.Fatalf("expected 42, got %v", val)
+	}
+}
+
+func TestFullPipeline_ArrayIndex(t *testing.T) {
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpConstant, A: 0, B: 0},
+			{Op: bytecode.OpConstant, A: 1, B: 0},
+			{Op: bytecode.OpConstant, A: 2, B: 0},
+			{Op: bytecode.OpArray, A: 3, B: 0},
+			{Op: bytecode.OpConstant, A: 3, B: 0},
+			{Op: bytecode.OpIndex},
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{int64(1), int64(2), int64(3), int64(1)},
+	}
+
+	val := runIalangChunkPipeline(t, chunk)
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 2 {
+		t.Fatalf("expected 2, got %v", val)
+	}
+}
+
+func TestFullPipeline_StringIndex(t *testing.T) {
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpConstant, A: 0, B: 0},
+			{Op: bytecode.OpConstant, A: 1, B: 0},
+			{Op: bytecode.OpIndex},
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{"hello", int64(1)},
+	}
+
+	val := runIalangChunkPipeline(t, chunk)
+	if val.Kind != core.ValueString || val.Raw.(string) != "e" {
+		t.Fatalf("expected e, got %v", val)
+	}
+}
+
+func TestFullPipeline_ObjectProperty(t *testing.T) {
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpObject},
+			{Op: bytecode.OpDup},
+			{Op: bytecode.OpConstant, A: 1, B: 0},
+			{Op: bytecode.OpSetProperty, A: 0, B: 0},
+			{Op: bytecode.OpGetProperty, A: 0, B: 0},
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{"answer", int64(42)},
+	}
+
+	val := runIalangChunkPipeline(t, chunk)
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 42 {
+		t.Fatalf("expected 42, got %v", val)
+	}
+}
+
+func TestFullPipeline_BuiltinLen(t *testing.T) {
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpGetName, A: 0, B: 0},
+			{Op: bytecode.OpConstant, A: 1, B: 0},
+			{Op: bytecode.OpCall, A: 1, B: 0},
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{"len", "hello"},
+	}
+
+	val := runIalangChunkPipeline(t, chunk)
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 5 {
+		t.Fatalf("expected 5, got %v", val)
+	}
+}
+
 type mockHost struct {
 	caps       map[string]api.CapabilityInstance
 	callLog    []api.CallRequest
@@ -286,12 +419,12 @@ func TestFullPipeline_GlobalVariableReassignment(t *testing.T) {
 	// let x = 1; x = x + 1;
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpConstant, A: 0, B: 0}, // push 1
+			{Op: bytecode.OpConstant, A: 0, B: 0},   // push 1
 			{Op: bytecode.OpDefineName, A: 1, B: 0}, // define x
-			{Op: bytecode.OpGetName, A: 2, B: 0}, // load x
-			{Op: bytecode.OpConstant, A: 3, B: 0}, // push 1
-			{Op: bytecode.OpAdd}, // x + 1
-			{Op: bytecode.OpSetName, A: 4, B: 0}, // x = ...
+			{Op: bytecode.OpGetName, A: 2, B: 0},    // load x
+			{Op: bytecode.OpConstant, A: 3, B: 0},   // push 1
+			{Op: bytecode.OpAdd},                    // x + 1
+			{Op: bytecode.OpSetName, A: 4, B: 0},    // x = ...
 			{Op: bytecode.OpReturn},
 		},
 		Constants: []any{
@@ -322,12 +455,12 @@ func TestFullPipeline_GlobalVariableReadWrite(t *testing.T) {
 	// let x = 5; let y = 3; return x + y;
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpConstant, A: 0, B: 0}, // push 5
+			{Op: bytecode.OpConstant, A: 0, B: 0},   // push 5
 			{Op: bytecode.OpDefineName, A: 1, B: 0}, // define x
-			{Op: bytecode.OpConstant, A: 2, B: 0}, // push 3
+			{Op: bytecode.OpConstant, A: 2, B: 0},   // push 3
 			{Op: bytecode.OpDefineName, A: 3, B: 0}, // define y
-			{Op: bytecode.OpGetName, A: 4, B: 0}, // load x
-			{Op: bytecode.OpGetName, A: 5, B: 0}, // load y
+			{Op: bytecode.OpGetName, A: 4, B: 0},    // load x
+			{Op: bytecode.OpGetName, A: 5, B: 0},    // load y
 			{Op: bytecode.OpAdd},
 			{Op: bytecode.OpReturn},
 		},
@@ -382,12 +515,12 @@ func TestFullPipeline_FunctionAccessesGlobal(t *testing.T) {
 	// let z = 10; function getZ() { return z; } getZ();
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpConstant, A: 0, B: 0}, // push 10
+			{Op: bytecode.OpConstant, A: 0, B: 0},   // push 10
 			{Op: bytecode.OpDefineName, A: 1, B: 0}, // define z
-			{Op: bytecode.OpClosure, A: 2, B: 0}, // load function template
+			{Op: bytecode.OpClosure, A: 2, B: 0},    // load function template
 			{Op: bytecode.OpDefineName, A: 3, B: 0}, // define getZ
-			{Op: bytecode.OpGetName, A: 4, B: 0}, // load getZ
-			{Op: bytecode.OpCall, A: 0, B: 0}, // getZ()
+			{Op: bytecode.OpGetName, A: 4, B: 0},    // load getZ
+			{Op: bytecode.OpCall, A: 0, B: 0},       // getZ()
 			{Op: bytecode.OpReturn},
 		},
 		Constants: []any{
