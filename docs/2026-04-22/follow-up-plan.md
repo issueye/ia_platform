@@ -438,6 +438,13 @@ allow_hosts = ["example.com"]
 
 - FS/HTTP 最小能力不再依赖散落的 `map[string]any` 约定。
 
+实施状态（2026-04-22）：
+
+- 已新增 `docs/iavm/abi-capabilities.md`，记录 Host 接口、capability 分类、FS/Network operation schema、错误语义和后续演进规则。
+- 已覆盖当前 `DefaultHost` 支持的 FS operations：`fs.read_file`、`fs.write_file`、`fs.append_file`、`fs.read_dir`、`fs.stat`、`fs.mkdir`、`fs.remove`、`fs.rename`。
+- 已覆盖当前 Network operation：`network.http_fetch`。
+- 当前仍保留 `map[string]any` 作为 ABI 承载层，但文档明确其为临时边界，后续可增加 typed adapter。
+
 ### Task 5：模块系统 lowering 设计草案
 
 输出物：
@@ -449,6 +456,14 @@ allow_hosts = ["example.com"]
 验收：
 
 - 能明确下一步代码改动范围，不再直接扩大 runtime 复杂度。
+
+实施状态（2026-04-22）：
+
+- 已实现 `OpExportAs` 的 lowering 元数据提取，`export { local as alias }` 会生成别名 `ExportGlobal`。
+- 已为 lowering 结果填充 `mod.Globals`，使 `ExportGlobal` 可通过 verifier 的全局索引检查。
+- 已实现顶层 `OpExportDefault` 的最小语义：消费栈顶值并写入 `default` 全局，同时生成 `ExportGlobal("default")`。
+- 已新增 bridge 单元测试覆盖普通全局导出、别名导出和默认表达式导出。
+- 剩余模块系统重点转为导入侧：`OpImportNamespace` 的对象绑定、依赖模块加载策略和 `run-iavm` 多模块入口。
 
 ---
 

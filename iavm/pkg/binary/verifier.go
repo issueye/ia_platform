@@ -159,18 +159,10 @@ func verifyFunctions(m *module.Module) error {
 		if err := verifyConstantRefs(&fn); err != nil {
 			return fmt.Errorf("function[%d]: %w", i, err)
 		}
-<<<<<<< HEAD
-
-		if err := verifyStackDepth(&fn); err != nil {
-			return fmt.Errorf("function[%d]: %w", i, err)
-		}
-||||||| parent of 93cf715 (feat(iavm): 添加模块验证、资源限制和CLI命令支持)
-=======
 
 		if err := verifyStackEffects(i, &fn, m); err != nil {
 			return fmt.Errorf("function[%d]: %w", i, err)
 		}
->>>>>>> 93cf715 (feat(iavm): 添加模块验证、资源限制和CLI命令支持)
 	}
 	return nil
 }

@@ -1,9 +1,10 @@
 package ialang
 
 import (
-	"testing"
 	"iacommon/pkg/ialang/bytecode"
 	"iavm/pkg/core"
+	"iavm/pkg/module"
+	"testing"
 )
 
 func TestLowerToModule_MinimalChunk(t *testing.T) {
@@ -73,6 +74,95 @@ func TestLowerToModule_ChunkWithFunction(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected 'main' to be exported")
+	}
+}
+
+func TestLowerToModule_ExportedGlobalPopulatesGlobals(t *testing.T) {
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpConstant, A: 0},
+			{Op: bytecode.OpDefineName, A: 1},
+			{Op: bytecode.OpExportName, A: 1},
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{int64(42), "value"},
+	}
+
+	mod, err := LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	if len(mod.Globals) != 1 {
+		t.Fatalf("expected 1 global, got %d", len(mod.Globals))
+	}
+	if mod.Globals[0].Name != "value" {
+		t.Fatalf("expected global name value, got %q", mod.Globals[0].Name)
+	}
+	if len(mod.Exports) != 1 {
+		t.Fatalf("expected 1 export, got %d", len(mod.Exports))
+	}
+	if mod.Exports[0].Name != "value" || mod.Exports[0].Kind != module.ExportGlobal || mod.Exports[0].Index != 0 {
+		t.Fatalf("unexpected export: %+v", mod.Exports[0])
+	}
+}
+
+func TestLowerToModule_ExportAsGlobalAlias(t *testing.T) {
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpConstant, A: 0},
+			{Op: bytecode.OpDefineName, A: 1},
+			{Op: bytecode.OpExportAs, A: 1, B: 2},
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{int64(42), "value", "answer"},
+	}
+
+	mod, err := LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	if len(mod.Exports) != 1 {
+		t.Fatalf("expected 1 export, got %d", len(mod.Exports))
+	}
+	if mod.Exports[0].Name != "answer" {
+		t.Fatalf("expected export alias answer, got %q", mod.Exports[0].Name)
+	}
+	if mod.Exports[0].Kind != module.ExportGlobal || mod.Exports[0].Index != 0 {
+		t.Fatalf("unexpected export: %+v", mod.Exports[0])
+	}
+}
+
+func TestLowerToModule_ExportDefaultExpression(t *testing.T) {
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpConstant, A: 0},
+			{Op: bytecode.OpExportDefault},
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{int64(42)},
+	}
+
+	mod, err := LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	if len(mod.Exports) != 1 {
+		t.Fatalf("expected 1 export, got %d", len(mod.Exports))
+	}
+	if mod.Exports[0].Name != "default" || mod.Exports[0].Kind != module.ExportGlobal {
+		t.Fatalf("unexpected default export: %+v", mod.Exports[0])
+	}
+	defaultIdx := mod.Exports[0].Index
+	if int(defaultIdx) >= len(mod.Globals) || mod.Globals[defaultIdx].Name != "default" {
+		t.Fatalf("default export points at invalid global: idx=%d globals=%+v", defaultIdx, mod.Globals)
+	}
+
+	entryFn := mod.Functions[len(mod.Functions)-1]
+	if entryFn.Code[1].Op != core.OpStoreGlobal || entryFn.Code[1].A != defaultIdx {
+		t.Fatalf("expected OpExportDefault to lower to StoreGlobal default, got %+v", entryFn.Code[1])
 	}
 }
 

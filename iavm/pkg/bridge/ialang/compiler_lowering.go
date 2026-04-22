@@ -42,6 +42,7 @@ func LowerToModule(input any) (*module.Module, error) {
 
 	// Collect global names from the chunk
 	globalNames = collectGlobalNames(chunk)
+	mod.Globals = buildGlobals(globalNames)
 
 	// Create entry function from top-level chunk with global remapping
 	entryFunc := lowerChunkAsFunctionWithGlobals(chunk, "entry", globalNames, funcIndexMap)
@@ -63,9 +64,10 @@ func LowerToModule(input any) (*module.Module, error) {
 		}
 	}
 
-	// Add exports for global variables (OpExportName in top-level chunk)
+	// Add exports for global variables (OpExportName/OpExportAs/OpExportDefault in top-level chunk)
 	for _, inst := range chunk.Code {
-		if inst.Op == bytecode.OpExportName {
+		switch inst.Op {
+		case bytecode.OpExportName:
 			if int(inst.A) < len(chunk.Constants) {
 				if name, ok := chunk.Constants[inst.A].(string); ok {
 					if _, alreadyExported := exportSet[name]; !alreadyExported {
@@ -80,6 +82,35 @@ func LowerToModule(input any) (*module.Module, error) {
 					}
 				}
 			}
+		case bytecode.OpExportAs:
+			if int(inst.A) < len(chunk.Constants) && int(inst.B) < len(chunk.Constants) {
+				localName, localOK := chunk.Constants[inst.A].(string)
+				exportName, exportOK := chunk.Constants[inst.B].(string)
+				if localOK && exportOK {
+					if _, alreadyExported := exportSet[exportName]; alreadyExported {
+						continue
+					}
+					if idx, exists := globalNames[localName]; exists {
+						mod.Exports = append(mod.Exports, module.Export{
+							Name:  exportName,
+							Kind:  module.ExportGlobal,
+							Index: uint32(idx),
+						})
+						exportSet[exportName] = struct{}{}
+					}
+				}
+			}
+		case bytecode.OpExportDefault:
+			if _, alreadyExported := exportSet["default"]; !alreadyExported {
+				if idx, exists := globalNames["default"]; exists {
+					mod.Exports = append(mod.Exports, module.Export{
+						Name:  "default",
+						Kind:  module.ExportGlobal,
+						Index: uint32(idx),
+					})
+					exportSet["default"] = struct{}{}
+				}
+			}
 		}
 	}
 
@@ -87,6 +118,19 @@ func LowerToModule(input any) (*module.Module, error) {
 	buildModuleConstantPool(mod)
 
 	return mod, nil
+}
+
+func buildGlobals(globalNames map[string]uint32) []module.Global {
+	globals := make([]module.Global, len(globalNames))
+	for name, idx := range globalNames {
+		globals[idx] = module.Global{
+			Name:    name,
+			Mutable: true,
+			Type:    core.ValueNull,
+			Value:   nil,
+		}
+	}
+	return globals
 }
 
 func buildModuleConstantPool(mod *module.Module) {
@@ -260,6 +304,14 @@ func lowerChunkAsFunctionWithGlobals(chunk *bytecode.Chunk, name string, globalN
 
 	// Remap instructions: fix constant indices and handle global names
 	for i, inst := range fn.Code {
+		if i < len(chunk.Code) && chunk.Code[i].Op == bytecode.OpExportDefault {
+			if idx, exists := globalNames["default"]; exists {
+				fn.Code[i].Op = core.OpStoreGlobal
+				fn.Code[i].A = idx
+			}
+			continue
+		}
+
 		switch inst.Op {
 		case core.OpConst, core.OpLoadGlobal, core.OpStoreGlobal, core.OpGetProp, core.OpSetProp, core.OpImportFunc:
 			if int(inst.A) < len(chunk.Constants) {
@@ -318,6 +370,11 @@ func collectGlobalNames(chunk *bytecode.Chunk) map[string]uint32 {
 					}
 				}
 			}
+		case bytecode.OpExportDefault:
+			if _, exists := globalNames["default"]; !exists {
+				globalNames["default"] = nextIdx
+				nextIdx++
+			}
 		}
 	}
 
@@ -369,15 +426,15 @@ func lowerConstants(constants []any, code []bytecode.Instruction) ([]any, map[in
 
 func lowerInstructions(ialangInsts []bytecode.Instruction, funcMap map[int]int) []core.Instruction {
 	var iavmInsts []core.Instruction
-	
+
 	for _, inst := range ialangInsts {
 		iavmInst := core.Instruction{}
-		
+
 		switch inst.Op {
 		case bytecode.OpConstant:
 			iavmInst.Op = core.OpConst
 			iavmInst.A = uint32(inst.A)
-			
+
 		case bytecode.OpAdd:
 			iavmInst.Op = core.OpAdd
 
