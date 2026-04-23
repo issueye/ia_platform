@@ -510,6 +510,7 @@ runtime 可以先将这些错误包装成运行时错误；后续若接入 ialan
 - `network.http_fetch` 还支持 capability 级 `retry_http_excluded_status_classes` / `retryHTTPExcludedStatusClasses` 配置，用于从上述状态族策略中排除整个状态族；命中时同样会直接保留原始 HTTP 响应
 - `network.http_fetch` 还支持 capability 级 `retry_http_methods` / `retryHTTPMethods` 安全阀；当该列表存在时，只有命中的 HTTP method 才允许上述状态码重试映射生效
 - `network.http_fetch` 还支持 capability 级 `retry_http_default_safe_methods` / `retryHTTPDefaultSafeMethods` 开关；开启后、且未显式提供 `retry_http_methods` 时，会自动允许标准幂等方法集（`GET/HEAD/OPTIONS/TRACE/PUT/DELETE`）参与上述状态码重试映射
+- `network.http_fetch` 还支持 capability 级 `retry_http_excluded_methods` / `retryHTTPExcludedMethods` 配置；当 method 已通过显式 allowlist 或默认 safe-methods gate 后，若命中该排除列表，仍会阻止后续状态码/状态族重试映射并保留原始 HTTP 响应
 - 当 `network.http_fetch` 命中的 HTTP 响应同时带有 `Retry-After` 头时，`DefaultHost` 会把它解析为 backoff hint 一并传给 runtime
 
 ## 5.1 IAVM `OpHostCall` 参数约定
