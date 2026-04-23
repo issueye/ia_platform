@@ -14,18 +14,19 @@ type CompiledFunction struct {
 type BuiltinFunc func(args []core.Value) core.Value
 
 type VM struct {
-	mod           *module.Module
-	options       Options
-	stack         *Stack
-	globals       []core.Value
-	functions     []CompiledFunction
-	handles       *HandleTable
-	frames        []*Frame
-	capabilityIDs map[uint32]string
-	exception     core.Value // current uncaught exception value
-	startedAt     int64
-	stepCount     int64
-	builtins      map[string]BuiltinFunc
+	mod              *module.Module
+	options          Options
+	stack            *Stack
+	globals          []core.Value
+	functions        []CompiledFunction
+	handles          *HandleTable
+	frames           []*Frame
+	capabilityIDs    map[uint32]string
+	lastCapabilityID string
+	exception        core.Value // current uncaught exception value
+	startedAt        int64
+	stepCount        int64
+	builtins         map[string]BuiltinFunc
 }
 
 func New(mod *module.Module, opts Options) (*VM, error) {
@@ -115,4 +116,21 @@ func (vm *VM) PopResult() (core.Value, bool) {
 
 func (vm *VM) StackSize() int {
 	return vm.stack.Size()
+}
+
+func (vm *VM) resolveStringConstant(fn *module.Function, index uint32) (string, bool) {
+	var value any
+	if len(vm.mod.Constants) > 0 {
+		if int(index) >= len(vm.mod.Constants) {
+			return "", false
+		}
+		value = vm.mod.Constants[index]
+	} else {
+		if int(index) >= len(fn.Constants) {
+			return "", false
+		}
+		value = fn.Constants[index]
+	}
+	text, ok := value.(string)
+	return text, ok
 }

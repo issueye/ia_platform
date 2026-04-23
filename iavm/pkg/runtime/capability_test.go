@@ -211,3 +211,91 @@ func TestCapability_HostCallError(t *testing.T) {
 		t.Fatal("expected error from host call")
 	}
 }
+
+func TestCapability_ImportCapUsesModuleConstants(t *testing.T) {
+	host := newMockHost()
+	host.callResult = api.CallResult{Value: map[string]any{"ok": true}}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"fs", "fs.read_file"},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	if len(host.callLog) != 1 {
+		t.Fatalf("expected 1 host call, got %d", len(host.callLog))
+	}
+	if host.callLog[0].CapabilityID != "fs" {
+		t.Fatalf("expected fs capability from module constants, got %q", host.callLog[0].CapabilityID)
+	}
+}
+
+func TestCapability_HostCallUsesLastImportedCapability(t *testing.T) {
+	host := newMockHost()
+	host.callResult = api.CallResult{Value: map[string]any{"ok": true}}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+			{Kind: module.CapabilityNetwork},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs", "network", "network.http_fetch"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpImportCap, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	if len(host.callLog) != 1 {
+		t.Fatalf("expected 1 host call, got %d", len(host.callLog))
+	}
+	if host.callLog[0].CapabilityID != "network" {
+		t.Fatalf("expected last imported capability to be used, got %q", host.callLog[0].CapabilityID)
+	}
+}

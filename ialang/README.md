@@ -188,6 +188,7 @@ For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.4-closure-class-pl
 - FS typed request/response adapter 已接入 `DefaultHost`
 - Network HTTP typed request/response adapter 已接入 `DefaultHost`
 - verifier 已开始校验静态 host operation 与 capability 声明的一致性
+- runtime 已固定使用“最近一次导入的 capability”，并兼容模块级常量池的 capability kind
 - 后续继续推进更广的 Host ABI typed adapter、`extends/super` 与平台异步语义
 
 For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.5-host-abi-control-flow-plan.md`.

@@ -371,11 +371,9 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 		// inst.A = capability kind index, inst.B = config index
 		fn := &vm.mod.Functions[frame.FunctionIndex]
-		var capKind string
-		if int(inst.A) < len(fn.Constants) {
-			if s, ok := fn.Constants[inst.A].(string); ok {
-				capKind = s
-			}
+		capKind, ok := vm.resolveStringConstant(fn, inst.A)
+		if !ok || capKind == "" {
+			return fmt.Errorf("capability import kind must reference a string constant")
 		}
 		cap, err := vm.options.Host.AcquireCapability(context.Background(), api.AcquireRequest{
 			Kind:   api.CapabilityKind(capKind),
@@ -389,6 +387,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			vm.capabilityIDs = make(map[uint32]string)
 		}
 		vm.capabilityIDs[inst.A] = cap.ID
+		vm.lastCapabilityID = cap.ID
 		vm.stack.Push(core.Value{Kind: core.ValueHostHandle, Raw: cap.ID})
 
 	case core.OpHostCall:
@@ -403,15 +402,12 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		opName := opVal.Raw.(string)
 		callArgs := vm.popHostCallArgs(int(inst.A))
 
-		// Get capability ID from the last imported capability
-		var capID string
-		for _, id := range vm.capabilityIDs {
-			capID = id
-			break
+		if vm.lastCapabilityID == "" {
+			return fmt.Errorf("no capability imported for host.call")
 		}
 
 		req := api.CallRequest{
-			CapabilityID: capID,
+			CapabilityID: vm.lastCapabilityID,
 			Operation:    opName,
 			Args:         callArgs,
 		}

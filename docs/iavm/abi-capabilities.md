@@ -294,6 +294,11 @@ runtime 可以先将这些错误包装成运行时错误；后续若接入 ialan
 
 建议当前 ABI 调用优先使用“单对象参数”模式，这样可以直接对接 `fs.read_file`、`fs.write_file`、`network.http_fetch` 等已稳定 operation 的命名字段。
 
+补充约定：
+
+- `OpImportCap` 的 capability kind 常量可来自模块级常量池或函数级常量池，与 `OpConst` 的常量解析规则保持一致。
+- `OpHostCall` 会绑定到最近一次成功执行 `OpImportCap` 导入的 capability。
+
 ## 6. 版本与演进规则
 
 短期 ABI 规则：

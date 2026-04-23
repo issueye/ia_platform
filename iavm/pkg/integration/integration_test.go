@@ -236,6 +236,66 @@ func TestFullPipeline_WithHostCapabilityArgs(t *testing.T) {
 	}
 }
 
+func TestFullPipeline_WithHostCapabilityModuleConstants(t *testing.T) {
+	host := newMockHost()
+	host.callResult = api.CallResult{Value: map[string]any{"status": "ok"}}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"fs", "fs.read_file"},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	result, err := binary.VerifyModule(mod, binary.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("VerifyModule failed: %v", err)
+	}
+	if !result.Valid {
+		t.Fatal("module not valid")
+	}
+
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule failed: %v", err)
+	}
+	decoded, err := binary.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("DecodeModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(decoded, runtime.Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("VM.Run with module constants failed: %v", err)
+	}
+
+	if len(host.callLog) != 1 {
+		t.Fatalf("expected 1 host call, got %d", len(host.callLog))
+	}
+	if host.callLog[0].CapabilityID != "fs" {
+		t.Fatalf("expected decoded module constants to drive fs capability, got %q", host.callLog[0].CapabilityID)
+	}
+}
+
 func TestFullPipeline_EncodeDecodeVerify(t *testing.T) {
 	original := &module.Module{
 		Magic:      "IAVM",
