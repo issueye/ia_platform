@@ -423,8 +423,10 @@ func stackEffect(inst core.Instruction, m *module.Module) (int, int, error) {
 	switch inst.Op {
 	case core.OpNop, core.OpJump, core.OpPushTry, core.OpPopTry:
 		return 0, 0, nil
-	case core.OpConst, core.OpLoadLocal, core.OpLoadGlobal, core.OpMakeObject, core.OpImportFunc, core.OpImportCap, core.OpHostPoll, core.OpClosure:
+	case core.OpConst, core.OpLoadLocal, core.OpLoadGlobal, core.OpMakeObject, core.OpImportFunc, core.OpImportCap, core.OpClosure:
 		return 0, 1, nil
+	case core.OpHostPoll:
+		return 1, 1, nil
 	case core.OpStoreLocal, core.OpStoreGlobal, core.OpJumpIfFalse, core.OpPop, core.OpThrow:
 		return 1, 0, nil
 	case core.OpHostCall:
@@ -712,8 +714,10 @@ func stackDelta(inst core.Instruction) int {
 
 	case core.OpConst, core.OpLoadLocal, core.OpLoadGlobal,
 		core.OpMakeObject, core.OpImportFunc, core.OpImportCap,
-		core.OpHostPoll, core.OpDup, core.OpClosure:
+		core.OpDup, core.OpClosure:
 		return 1
+	case core.OpHostPoll:
+		return 0
 
 	case core.OpClass:
 		return 1 - classStackEffect(inst)

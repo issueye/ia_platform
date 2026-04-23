@@ -335,8 +335,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if !ok {
 			return fmt.Errorf("property name at index %d is not a string", inst.A)
 		}
-		m := obj.Raw.(map[string]core.Value)
-		if val, ok := vm.getObjectProperty(obj, m, name); ok {
+		if val, ok := vm.getObjectProperty(obj, name); ok {
 			vm.stack.Push(val)
 		} else {
 			vm.stack.Push(core.Value{Kind: core.ValueNull})
@@ -356,8 +355,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if !ok {
 			return fmt.Errorf("property name at index %d is not a string", inst.A)
 		}
-		m := obj.Raw.(map[string]core.Value)
-		if err := vm.setObjectProperty(obj, m, name, val); err != nil {
+		if err := vm.setObjectProperty(obj, name, val); err != nil {
 			return err
 		}
 
@@ -424,7 +422,19 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 
 	case core.OpHostPoll:
-		vm.stack.Push(core.Value{Kind: core.ValueNull})
+		if vm.options.Host == nil {
+			return fmt.Errorf("no host configured for host.poll")
+		}
+		handleVal := vm.stack.Pop()
+		handleID, err := hostHandleID(handleVal)
+		if err != nil {
+			return err
+		}
+		result, err := vm.options.Host.Poll(context.Background(), handleID)
+		if err != nil {
+			return fmt.Errorf("host.poll failed: %w", err)
+		}
+		vm.stack.Push(coreValueFromHostPoll(result))
 
 	case core.OpDup:
 		val := vm.stack.Peek(0)
@@ -518,8 +528,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 				return fmt.Errorf("object index must be string, got %v", indexVal.Kind)
 			}
 			key := indexVal.Raw.(string)
-			m := targetVal.Raw.(map[string]core.Value)
-			if val, ok := m[key]; ok {
+			if val, ok := vm.getObjectProperty(targetVal, key); ok {
 				vm.stack.Push(val)
 			} else {
 				vm.stack.Push(core.Value{Kind: core.ValueNull})
@@ -768,42 +777,61 @@ func (vm *VM) lookupGlobalByName(name string) core.Value {
 	return core.Value{Kind: core.ValueNull}
 }
 
-func (vm *VM) getObjectProperty(obj core.Value, m map[string]core.Value, name string) (core.Value, bool) {
-	if isInstanceValue(obj) {
-		if val, ok := m[name]; ok && !isReservedObjectKey(name) {
+func (vm *VM) getObjectProperty(obj core.Value, name string) (core.Value, bool) {
+	switch m := obj.Raw.(type) {
+	case map[string]core.Value:
+		if isInstanceValue(obj) {
+			if val, ok := m[name]; ok && !isReservedObjectKey(name) {
+				return val, true
+			}
+			classVal := m[instanceClassRefKey]
+			if getter, ok := lookupClassAccessor(classVal, classGettersKey, name); ok {
+				return bindReceiver(getter, obj), true
+			}
+			if method, ok := lookupClassAccessor(classVal, classMethodsKey, name); ok {
+				return bindReceiver(method, obj), true
+			}
+			return core.Value{Kind: core.ValueNull}, false
+		}
+		if isClassValue(obj) {
+			if method, ok := lookupClassAccessor(obj, classStaticKey, name); ok {
+				return method, true
+			}
+		}
+		if val, ok := m[name]; ok {
 			return val, true
 		}
-		classVal := m[instanceClassRefKey]
-		if getter, ok := lookupClassAccessor(classVal, classGettersKey, name); ok {
-			return bindReceiver(getter, obj), true
+		return core.Value{Kind: core.ValueNull}, false
+	case map[string]any:
+		val, ok := m[name]
+		if !ok {
+			return core.Value{Kind: core.ValueNull}, false
 		}
-		if method, ok := lookupClassAccessor(classVal, classMethodsKey, name); ok {
-			return bindReceiver(method, obj), true
-		}
+		return coreValueFromAny(val), true
+	default:
 		return core.Value{Kind: core.ValueNull}, false
 	}
-	if isClassValue(obj) {
-		if method, ok := lookupClassAccessor(obj, classStaticKey, name); ok {
-			return method, true
-		}
-	}
-	if val, ok := m[name]; ok {
-		return val, true
-	}
-	return core.Value{Kind: core.ValueNull}, false
 }
 
-func (vm *VM) setObjectProperty(obj core.Value, m map[string]core.Value, name string, val core.Value) error {
-	if isInstanceValue(obj) {
-		classVal := m[instanceClassRefKey]
-		if setter, ok := lookupClassAccessor(classVal, classSettersKey, name); ok {
-			return vm.invokeCallable(bindReceiver(setter, obj), []core.Value{val})
+func (vm *VM) setObjectProperty(obj core.Value, name string, val core.Value) error {
+	switch m := obj.Raw.(type) {
+	case map[string]core.Value:
+		if isInstanceValue(obj) {
+			classVal := m[instanceClassRefKey]
+			if setter, ok := lookupClassAccessor(classVal, classSettersKey, name); ok {
+				return vm.invokeCallable(bindReceiver(setter, obj), []core.Value{val})
+			}
+			m[name] = val
+			return nil
 		}
 		m[name] = val
 		return nil
+	case map[string]any:
+		m[name] = coreValueToHostAny(val)
+		return nil
+	default:
+		return fmt.Errorf("cannot set property on unsupported object backing")
 	}
-	m[name] = val
-	return nil
 }
 
 func (vm *VM) instantiateClass(classVal core.Value) (core.Value, core.Value, error) {
@@ -957,18 +985,25 @@ func hostObjectArgs(v core.Value) (map[string]any, bool) {
 	if v.Kind != core.ValueObjectRef {
 		return nil, false
 	}
-	obj, ok := v.Raw.(map[string]core.Value)
-	if !ok {
+	switch obj := v.Raw.(type) {
+	case map[string]core.Value:
+		result := make(map[string]any, len(obj))
+		for key, val := range obj {
+			if isReservedObjectKey(key) {
+				continue
+			}
+			result[key] = coreValueToHostAny(val)
+		}
+		return result, true
+	case map[string]any:
+		result := make(map[string]any, len(obj))
+		for key, val := range obj {
+			result[key] = val
+		}
+		return result, true
+	default:
 		return nil, false
 	}
-	result := make(map[string]any, len(obj))
-	for key, val := range obj {
-		if isReservedObjectKey(key) {
-			continue
-		}
-		result[key] = coreValueToHostAny(val)
-	}
-	return result, true
 }
 
 func coreValueToHostAny(v core.Value) any {
@@ -1016,9 +1051,49 @@ func coreValueFromAny(v any) core.Value {
 		return core.Value{Kind: core.ValueF64, Raw: val}
 	case string:
 		return core.Value{Kind: core.ValueString, Raw: val}
+	case []byte:
+		return core.Value{Kind: core.ValueBytes, Raw: val}
+	case uint64:
+		return core.Value{Kind: core.ValueHostHandle, Raw: val}
+	case map[string]any:
+		return core.Value{Kind: core.ValueObjectRef, Raw: val}
+	case []any:
+		result := make([]core.Value, 0, len(val))
+		for _, item := range val {
+			result = append(result, coreValueFromAny(item))
+		}
+		return core.Value{Kind: core.ValueArrayRef, Raw: result}
 	default:
 		return core.Value{Kind: core.ValueNull}
 	}
+}
+
+func hostHandleID(v core.Value) (uint64, error) {
+	switch v.Kind {
+	case core.ValueHostHandle:
+		switch raw := v.Raw.(type) {
+		case uint64:
+			return raw, nil
+		case int64:
+			return uint64(raw), nil
+		}
+	case core.ValueI64:
+		return uint64(v.Raw.(int64)), nil
+	case core.ValueF64:
+		return uint64(v.Raw.(float64)), nil
+	}
+	return 0, fmt.Errorf("host.poll requires a handle id")
+}
+
+func coreValueFromHostPoll(result api.PollResult) core.Value {
+	value := map[string]any{
+		"done":  result.Done,
+		"error": result.Error,
+	}
+	for key, item := range result.Value {
+		value[key] = item
+	}
+	return core.Value{Kind: core.ValueObjectRef, Raw: value}
 }
 
 func toFloat(v core.Value) (float64, bool) {

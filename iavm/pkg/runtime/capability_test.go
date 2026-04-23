@@ -14,6 +14,9 @@ type mockHost struct {
 	callLog    []api.CallRequest
 	callResult api.CallResult
 	callErr    error
+	pollLog    []uint64
+	pollResult api.PollResult
+	pollErr    error
 }
 
 func newMockHost() *mockHost {
@@ -42,7 +45,8 @@ func (h *mockHost) Call(ctx context.Context, req api.CallRequest) (api.CallResul
 }
 
 func (h *mockHost) Poll(ctx context.Context, handleID uint64) (api.PollResult, error) {
-	return api.PollResult{}, nil
+	h.pollLog = append(h.pollLog, handleID)
+	return h.pollResult, h.pollErr
 }
 
 func TestCapability_AcquireAndCall(t *testing.T) {
@@ -297,5 +301,53 @@ func TestCapability_HostCallUsesLastImportedCapability(t *testing.T) {
 	}
 	if host.callLog[0].CapabilityID != "network" {
 		t.Fatalf("expected last imported capability to be used, got %q", host.callLog[0].CapabilityID)
+	}
+}
+
+func TestCapability_HostPollUsesHandleFromStack(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true, "data": []byte("ok")},
+	}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Constants: []any{
+			int64(7),
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpHostPoll},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	if len(host.pollLog) != 1 || host.pollLog[0] != 7 {
+		t.Fatalf("unexpected poll log: %#v", host.pollLog)
+	}
+	if vm.stack.Size() == 0 {
+		t.Fatal("expected poll result on stack")
+	}
+	result := vm.stack.Pop()
+	if result.Kind != core.ValueObjectRef {
+		t.Fatalf("expected object result, got %v", result.Kind)
 	}
 }

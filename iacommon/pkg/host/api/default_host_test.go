@@ -174,6 +174,83 @@ func TestDefaultHostFSAdaptersSupportAliasesAndStructuredResponses(t *testing.T)
 	}
 }
 
+func TestDefaultHostFSHandleLifecycleAndPoll(t *testing.T) {
+	host := &DefaultHost{FS: newTestFSProvider(t, false)}
+	ctx := context.Background()
+
+	capability, err := host.AcquireCapability(ctx, AcquireRequest{Kind: CapabilityFS})
+	if err != nil {
+		t.Fatalf("acquire fs capability: %v", err)
+	}
+
+	_, err = host.Call(ctx, CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "fs.write_file",
+		Args: map[string]any{
+			"path":   "/workspace/handle.txt",
+			"data":   "hello handles",
+			"create": true,
+			"trunc":  true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	openResult, err := host.Call(ctx, CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "fs.open",
+		Args: map[string]any{
+			"path": "/workspace/handle.txt",
+			"read": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("open file: %v", err)
+	}
+	handleID, ok := openResult.Value["handle"].(uint64)
+	if !ok || handleID == 0 {
+		t.Fatalf("expected uint64 handle, got %#v", openResult.Value["handle"])
+	}
+
+	pollResult, err := host.Poll(ctx, handleID)
+	if err != nil {
+		t.Fatalf("poll handle: %v", err)
+	}
+	if !pollResult.Done || pollResult.Value["ready"] != true {
+		t.Fatalf("unexpected poll result: %+v", pollResult)
+	}
+
+	readResult, err := host.Call(ctx, CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "fs.read",
+		Args: map[string]any{
+			"handle": handleID,
+			"size":   5,
+		},
+	})
+	if err != nil {
+		t.Fatalf("read handle: %v", err)
+	}
+	data, ok := readResult.Value["data"].([]byte)
+	if !ok || string(data) != "hello" {
+		t.Fatalf("unexpected read data: %#v", readResult.Value["data"])
+	}
+
+	_, err = host.Call(ctx, CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "fs.close",
+		Args:         map[string]any{"handle": handleID},
+	})
+	if err != nil {
+		t.Fatalf("close handle: %v", err)
+	}
+
+	if _, err := host.Poll(ctx, handleID); !errors.Is(err, ErrCapabilityNotFound) {
+		t.Fatalf("expected ErrCapabilityNotFound after close, got %v", err)
+	}
+}
+
 func newTestFSProvider(t *testing.T, readOnly bool) hostfs.Provider {
 	t.Helper()
 
