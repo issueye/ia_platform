@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"iacommon/pkg/host/api"
 	hostfs "iacommon/pkg/host/fs"
 	hostnet "iacommon/pkg/host/network"
 	bc "iacommon/pkg/ialang/bytecode"
@@ -20,7 +22,38 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	runtimepkg "iavm/pkg/runtime"
 )
+
+type waitTestHost struct {
+	pollResult api.PollResult
+	waitResult api.PollResult
+	pollLog    []uint64
+	waitLog    []uint64
+}
+
+func (h *waitTestHost) AcquireCapability(ctx context.Context, req api.AcquireRequest) (api.CapabilityInstance, error) {
+	return api.CapabilityInstance{}, nil
+}
+
+func (h *waitTestHost) ReleaseCapability(ctx context.Context, capID string) error {
+	return nil
+}
+
+func (h *waitTestHost) Call(ctx context.Context, req api.CallRequest) (api.CallResult, error) {
+	return api.CallResult{}, nil
+}
+
+func (h *waitTestHost) Poll(ctx context.Context, handleID uint64) (api.PollResult, error) {
+	h.pollLog = append(h.pollLog, handleID)
+	return h.pollResult, nil
+}
+
+func (h *waitTestHost) Wait(ctx context.Context, handleID uint64) (api.PollResult, error) {
+	h.waitLog = append(h.waitLog, handleID)
+	return h.waitResult, nil
+}
 
 func TestParseCLIArgs(t *testing.T) {
 	tests := []struct {
@@ -1134,6 +1167,62 @@ func TestRunCLIRunIavmCapConfigEnablesNetworkListenAccept(t *testing.T) {
 	}
 	if got := <-clientResult; string(got) != "pong" {
 		t.Fatalf("client recv = %q, want pong", string(got))
+	}
+}
+
+func TestRunIavmUntilSettledWaitsPendingSuspension(t *testing.T) {
+	host := &waitTestHost{
+		pollResult: api.PollResult{
+			Done:  false,
+			Value: map[string]any{"ready": false},
+		},
+		waitResult: api.PollResult{
+			Done:  true,
+			Value: map[string]any{"ready": true},
+		},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Constants: []any{int64(21), "ready"},
+		Types:     []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 1},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := runtimepkg.New(mod, runtimepkg.Options{Host: host})
+	if err != nil {
+		t.Fatalf("runtime.New failed: %v", err)
+	}
+	if err := runIavmUntilSettled(context.Background(), vm); err != nil {
+		t.Fatalf("runIavmUntilSettled failed: %v", err)
+	}
+	if len(host.pollLog) != 1 || host.pollLog[0] != 21 {
+		t.Fatalf("unexpected poll log: %#v", host.pollLog)
+	}
+	if len(host.waitLog) != 1 || host.waitLog[0] != 21 {
+		t.Fatalf("unexpected wait log: %#v", host.waitLog)
+	}
+
+	result, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if result.Kind != core.ValueBool || !result.Raw.(bool) {
+		t.Fatalf("unexpected wait result: %#v", result)
 	}
 }
 
