@@ -2,7 +2,9 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"iacommon/pkg/host/api"
 	"iavm/pkg/core"
@@ -10,17 +12,21 @@ import (
 )
 
 type mockHost struct {
-	acquireLog []api.AcquireRequest
-	caps       map[string]api.CapabilityInstance
-	callLog    []api.CallRequest
-	callResult api.CallResult
-	callErr    error
-	pollLog    []uint64
-	pollResult api.PollResult
-	pollErr    error
-	waitLog    []uint64
-	waitResult api.PollResult
-	waitErr    error
+	acquireLog   []api.AcquireRequest
+	caps         map[string]api.CapabilityInstance
+	callLog      []api.CallRequest
+	callResult   api.CallResult
+	callErr      error
+	pollLog      []uint64
+	pollResult   api.PollResult
+	pollErr      error
+	waitLog      []uint64
+	waitResult   api.PollResult
+	waitErr      error
+	blockAcquire bool
+	blockCall    bool
+	blockPoll    bool
+	blockWait    bool
 }
 
 type pollOnlyHost struct {
@@ -35,6 +41,10 @@ func newMockHost() *mockHost {
 }
 
 func (h *mockHost) AcquireCapability(ctx context.Context, req api.AcquireRequest) (api.CapabilityInstance, error) {
+	if h.blockAcquire {
+		<-ctx.Done()
+		return api.CapabilityInstance{}, ctx.Err()
+	}
 	h.acquireLog = append(h.acquireLog, req)
 	cap := api.CapabilityInstance{
 		ID:   string(req.Kind),
@@ -50,16 +60,28 @@ func (h *mockHost) ReleaseCapability(ctx context.Context, capID string) error {
 }
 
 func (h *mockHost) Call(ctx context.Context, req api.CallRequest) (api.CallResult, error) {
+	if h.blockCall {
+		<-ctx.Done()
+		return api.CallResult{}, ctx.Err()
+	}
 	h.callLog = append(h.callLog, req)
 	return h.callResult, h.callErr
 }
 
 func (h *mockHost) Poll(ctx context.Context, handleID uint64) (api.PollResult, error) {
+	if h.blockPoll {
+		<-ctx.Done()
+		return api.PollResult{}, ctx.Err()
+	}
 	h.pollLog = append(h.pollLog, handleID)
 	return h.pollResult, h.pollErr
 }
 
 func (h *mockHost) Wait(ctx context.Context, handleID uint64) (api.PollResult, error) {
+	if h.blockWait {
+		<-ctx.Done()
+		return api.PollResult{}, ctx.Err()
+	}
 	h.waitLog = append(h.waitLog, handleID)
 	return h.waitResult, h.waitErr
 }
@@ -141,6 +163,47 @@ func TestCapability_AcquireAndCall(t *testing.T) {
 	val := vm.stack.Pop()
 	if val.Kind != core.ValueObjectRef {
 		t.Fatalf("expected object result, got %v", val.Kind)
+	}
+}
+
+func TestCapability_HostCallHonorsHostTimeout(t *testing.T) {
+	host := newMockHost()
+	host.blockCall = true
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs", "fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:        host,
+		HostTimeout: 5 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run error = %v, want deadline exceeded", err)
 	}
 }
 

@@ -390,10 +390,12 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			return fmt.Errorf("capability import kind must reference a string constant")
 		}
 		config := vm.capabilityConfig(module.CapabilityKind(capKind))
-		cap, err := vm.options.Host.AcquireCapability(vm.hostContext(), api.AcquireRequest{
+		hostCtx, cancel := vm.hostOperationContext(vm.hostContext(), vm.options.HostTimeout)
+		cap, err := vm.options.Host.AcquireCapability(hostCtx, api.AcquireRequest{
 			Kind:   api.CapabilityKind(capKind),
 			Config: config,
 		})
+		cancel()
 		if err != nil {
 			return fmt.Errorf("failed to acquire capability: %w", err)
 		}
@@ -427,7 +429,9 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			Args:         callArgs,
 		}
 
-		result, err := vm.options.Host.Call(vm.hostContext(), req)
+		hostCtx, cancel := vm.hostOperationContext(vm.hostContext(), vm.options.HostTimeout)
+		result, err := vm.options.Host.Call(hostCtx, req)
+		cancel()
 		if err != nil {
 			return fmt.Errorf("host.call failed: %w", err)
 		}
@@ -447,7 +451,9 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if err != nil {
 			return err
 		}
-		result, err := vm.options.Host.Poll(vm.hostContext(), handleID)
+		hostCtx, cancel := vm.hostOperationContext(vm.hostContext(), vm.options.HostTimeout)
+		result, err := vm.options.Host.Poll(hostCtx, handleID)
+		cancel()
 		if err != nil {
 			return fmt.Errorf("host.poll failed: %w", err)
 		}

@@ -375,6 +375,60 @@ func TestRunUntilSettledHonorsMaxDuration(t *testing.T) {
 	}
 }
 
+func TestRunUntilSettledHonorsWaitTimeout(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.blockWait = true
+
+	mod := moduleForAsyncTest([]any{int64(27)}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{
+		Host:        host,
+		WaitTimeout: 5 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	err = vm.RunUntilSettled(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunUntilSettled error = %v, want deadline exceeded", err)
+	}
+}
+
+func TestRunUntilSettledHonorsHostTimeoutDuringPoll(t *testing.T) {
+	host := newMockHost()
+	host.blockPoll = true
+
+	mod := moduleForAsyncTest([]any{int64(29)}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{
+		Host:        host,
+		HostTimeout: 5 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	err = vm.RunUntilSettled(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunUntilSettled error = %v, want deadline exceeded", err)
+	}
+}
+
 func moduleForAsyncTest(constants []any, code []core.Instruction) *module.Module {
 	return &module.Module{
 		Magic:     "IAVM",

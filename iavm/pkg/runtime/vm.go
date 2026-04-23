@@ -189,7 +189,9 @@ func (vm *VM) WaitSuspension(ctx context.Context) error {
 
 	waiter, ok := vm.options.Host.(api.Waiter)
 	if ok {
-		result, err := waiter.Wait(ctx, state.PollHandleID)
+		waitCtx, cancel := vm.hostOperationContext(ctx, vm.options.WaitTimeout)
+		result, err := waiter.Wait(waitCtx, state.PollHandleID)
+		cancel()
 		if err != nil {
 			return err
 		}
@@ -237,7 +239,9 @@ func (vm *VM) waitSuspensionByPolling(ctx context.Context, state *promiseState) 
 		interval = 10 * time.Millisecond
 	}
 	for {
-		result, err := vm.options.Host.Poll(ctx, state.PollHandleID)
+		pollCtx, cancel := vm.hostOperationContext(ctx, vm.options.HostTimeout)
+		result, err := vm.options.Host.Poll(pollCtx, state.PollHandleID)
+		cancel()
 		if err != nil {
 			return fmt.Errorf("host.poll failed during wait: %w", err)
 		}
@@ -269,6 +273,16 @@ func (vm *VM) hostContext() context.Context {
 		return vm.runCtx
 	}
 	return context.Background()
+}
+
+func (vm *VM) hostOperationContext(base context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if base == nil {
+		base = vm.hostContext()
+	}
+	if timeout <= 0 {
+		return base, func() {}
+	}
+	return context.WithTimeout(base, timeout)
 }
 
 func (vm *VM) beginRunContext(ctx context.Context) {
@@ -367,7 +381,9 @@ func (vm *VM) resolveSuspendedValue(v core.Value) (core.Value, error) {
 		if vm.options.Host == nil {
 			return core.Value{}, fmt.Errorf("no host configured for suspended poll")
 		}
-		result, err := vm.options.Host.Poll(vm.hostContext(), state.PollHandleID)
+		pollCtx, cancel := vm.hostOperationContext(vm.hostContext(), vm.options.HostTimeout)
+		result, err := vm.options.Host.Poll(pollCtx, state.PollHandleID)
+		cancel()
 		if err != nil {
 			return core.Value{}, fmt.Errorf("host.poll failed during resume: %w", err)
 		}
