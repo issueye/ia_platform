@@ -1,9 +1,9 @@
 package runtime
 
 import (
-	"testing"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
+	"testing"
 )
 
 func TestStack_PushPop(t *testing.T) {
@@ -1291,12 +1291,12 @@ func TestInterpret_JumpIfTrue(t *testing.T) {
 				TypeIndex: 0,
 				Constants: []any{int64(42), int64(99)},
 				Code: []core.Instruction{
-					{Op: core.OpConst, A: 0},       // push 42 (truthy value)
-					{Op: core.OpJumpIfTrue, A: 4},   // if truthy -> jump to instruction 4
-					{Op: core.OpConst, A: 1},        // push 99 (falsy branch, skipped)
-					{Op: core.OpReturn},             // return 99 (skipped)
-					{Op: core.OpConst, A: 0},        // push 42 (truthy branch)
-					{Op: core.OpReturn},             // return 42
+					{Op: core.OpConst, A: 0},      // push 42 (truthy value)
+					{Op: core.OpJumpIfTrue, A: 4}, // if truthy -> jump to instruction 4
+					{Op: core.OpConst, A: 1},      // push 99 (falsy branch, skipped)
+					{Op: core.OpReturn},           // return 99 (skipped)
+					{Op: core.OpConst, A: 0},      // push 42 (truthy branch)
+					{Op: core.OpReturn},           // return 42
 				},
 			},
 		},
@@ -1377,12 +1377,12 @@ func TestInterpret_JumpIfNullish_NonNull(t *testing.T) {
 				TypeIndex: 0,
 				Constants: []any{int64(42), int64(99)},
 				Code: []core.Instruction{
-					{Op: core.OpConst, A: 0},          // push 42 (non-null)
-					{Op: core.OpJumpIfNullish, A: 4},   // should NOT jump
-					{Op: core.OpConst, A: 0},           // push 42
-					{Op: core.OpReturn},                // return 42
-					{Op: core.OpConst, A: 1},           // push 99 (jump target, skipped)
-					{Op: core.OpReturn},                // return 99
+					{Op: core.OpConst, A: 0},         // push 42 (non-null)
+					{Op: core.OpJumpIfNullish, A: 4}, // should NOT jump
+					{Op: core.OpConst, A: 0},         // push 42
+					{Op: core.OpReturn},              // return 42
+					{Op: core.OpConst, A: 1},         // push 99 (jump target, skipped)
+					{Op: core.OpReturn},              // return 99
 				},
 			},
 		},
@@ -1417,12 +1417,12 @@ func TestInterpret_JumpIfNullish_Null(t *testing.T) {
 				TypeIndex: 0,
 				Constants: []any{int64(42), int64(99), nil},
 				Code: []core.Instruction{
-					{Op: core.OpConst, A: 2},          // push null
-					{Op: core.OpJumpIfNullish, A: 4},   // SHOULD jump (null is nullish)
-					{Op: core.OpConst, A: 0},           // push 42 (skipped)
-					{Op: core.OpReturn},                // return 42 (skipped)
-					{Op: core.OpConst, A: 1},           // push 99 (jump target)
-					{Op: core.OpReturn},                // return 99
+					{Op: core.OpConst, A: 2},         // push null
+					{Op: core.OpJumpIfNullish, A: 4}, // SHOULD jump (null is nullish)
+					{Op: core.OpConst, A: 0},         // push 42 (skipped)
+					{Op: core.OpReturn},              // return 42 (skipped)
+					{Op: core.OpConst, A: 1},         // push 99 (jump target)
+					{Op: core.OpReturn},              // return 99
 				},
 			},
 		},
@@ -1458,11 +1458,11 @@ func TestInterpret_JumpIfNotNullish(t *testing.T) {
 				Constants: []any{int64(42), int64(99)},
 				Code: []core.Instruction{
 					{Op: core.OpConst, A: 0},            // push 42 (non-null)
-					{Op: core.OpJumpIfNotNullish, A: 4},  // SHOULD jump (42 is not null)
-					{Op: core.OpConst, A: 0},             // push 42 (skipped)
-					{Op: core.OpReturn},                  // return 42 (skipped)
-					{Op: core.OpConst, A: 1},             // push 99 (jump target)
-					{Op: core.OpReturn},                  // return 99
+					{Op: core.OpJumpIfNotNullish, A: 4}, // SHOULD jump (42 is not null)
+					{Op: core.OpConst, A: 0},            // push 42 (skipped)
+					{Op: core.OpReturn},                 // return 42 (skipped)
+					{Op: core.OpConst, A: 1},            // push 99 (jump target)
+					{Op: core.OpReturn},                 // return 99
 				},
 			},
 		},
@@ -1498,11 +1498,11 @@ func TestInterpret_JumpIfNotNullish_Null(t *testing.T) {
 				Constants: []any{int64(42), int64(99), nil},
 				Code: []core.Instruction{
 					{Op: core.OpConst, A: 2},            // push null
-					{Op: core.OpJumpIfNotNullish, A: 4},  // should NOT jump (null is nullish)
-					{Op: core.OpConst, A: 0},             // push 42
-					{Op: core.OpReturn},                  // return 42
-					{Op: core.OpConst, A: 1},             // push 99 (jump target, skipped)
-					{Op: core.OpReturn},                  // return 99
+					{Op: core.OpJumpIfNotNullish, A: 4}, // should NOT jump (null is nullish)
+					{Op: core.OpConst, A: 0},            // push 42
+					{Op: core.OpReturn},                 // return 42
+					{Op: core.OpConst, A: 1},            // push 99 (jump target, skipped)
+					{Op: core.OpReturn},                 // return 99
 				},
 			},
 		},
@@ -1537,11 +1537,11 @@ func TestInterpret_TryCatch(t *testing.T) {
 				TypeIndex: 0,
 				Constants: []any{"error", int64(42)},
 				Code: []core.Instruction{
-					{Op: core.OpPushTry, A: 3},  // catch handler at instruction 3
-					{Op: core.OpConst, A: 0},     // push "error"
-					{Op: core.OpThrow},           // throw "error"
-					{Op: core.OpPopTry},          // pop try (unreachable)
-					{Op: core.OpConst, A: 1},     // push 42 (catch handler)
+					{Op: core.OpPushTry, A: 3}, // catch handler at instruction 3
+					{Op: core.OpConst, A: 0},   // push "error"
+					{Op: core.OpThrow},         // throw "error"
+					{Op: core.OpPopTry},        // pop try (unreachable)
+					{Op: core.OpConst, A: 1},   // push 42 (catch handler)
 					{Op: core.OpReturn},
 				},
 			},
@@ -1616,15 +1616,15 @@ func TestInterpret_NestedTryCatch(t *testing.T) {
 				TypeIndex: 0,
 				Constants: []any{"err", int64(21), int64(99)},
 				Code: []core.Instruction{
-					{Op: core.OpPushTry, A: 7},   // outer catch at 7
-					{Op: core.OpPushTry, A: 4},   // inner catch at 4
+					{Op: core.OpPushTry, A: 7}, // outer catch at 7
+					{Op: core.OpPushTry, A: 4}, // inner catch at 4
 					{Op: core.OpConst, A: 0},
 					{Op: core.OpThrow},
 					{Op: core.OpPopTry},
-					{Op: core.OpConst, A: 1},     // return 21
+					{Op: core.OpConst, A: 1}, // return 21
 					{Op: core.OpReturn},
 					{Op: core.OpPopTry},
-					{Op: core.OpConst, A: 2},     // return 99 (outer catch)
+					{Op: core.OpConst, A: 2}, // return 99 (outer catch)
 					{Op: core.OpReturn},
 				},
 			},
@@ -1644,6 +1644,66 @@ func TestInterpret_NestedTryCatch(t *testing.T) {
 	val := vm.stack.Pop()
 	if val.Kind != core.ValueI64 || val.Raw.(int64) != 21 {
 		t.Fatalf("expected 21, got %v", val)
+	}
+}
+
+func TestInterpret_TryFinallyRethrow(t *testing.T) {
+	// Equivalent shape produced by compileTryFinallyOnly:
+	//   hasErr = false; err = null
+	//   try { throw "boom" } finally { side = 2 }
+	//   if hasErr { throw err }
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Locals: []core.ValueKind{
+					core.ValueBool,   // hasErr
+					core.ValueString, // err
+					core.ValueI64,    // side
+				},
+				Constants: []any{false, nil, int64(1), "boom", true, int64(2)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},      // false
+					{Op: core.OpStoreLocal, A: 0}, // hasErr = false
+					{Op: core.OpConst, A: 1},      // nil
+					{Op: core.OpStoreLocal, A: 1}, // err = nil
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpStoreLocal, A: 2}, // side = 1
+					{Op: core.OpPushTry, A: 11, B: 2},
+					{Op: core.OpConst, A: 3}, // "boom"
+					{Op: core.OpThrow},
+					{Op: core.OpPopTry},
+					{Op: core.OpJump, A: 13},
+					{Op: core.OpConst, A: 4},
+					{Op: core.OpStoreLocal, A: 0}, // hasErr = true
+					{Op: core.OpConst, A: 5},
+					{Op: core.OpStoreLocal, A: 2}, // side = 2 (finally)
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpJumpIfFalse, A: 19},
+					{Op: core.OpLoadLocal, A: 1},
+					{Op: core.OpThrow},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err == nil {
+		t.Fatal("expected uncaught exception after finally rethrow")
+	}
+	if got := vm.frames; len(got) != 0 {
+		t.Fatalf("expected no remaining frames after failure, got %d", len(got))
 	}
 }
 
@@ -1743,10 +1803,10 @@ func TestInterpret_ClosureUpvalue(t *testing.T) {
 				Constants: []any{int64(0)},
 				Captures:  nil,
 				Code: []core.Instruction{
-					{Op: core.OpLoadLocal, A: 0},       // load start (param)
-					{Op: core.OpStoreLocal, A: 1},       // n = start
-					{Op: core.OpClosure, A: 1},          // push inc (with capture of local 1)
-					{Op: core.OpReturn},                  // return inc
+					{Op: core.OpLoadLocal, A: 0},  // load start (param)
+					{Op: core.OpStoreLocal, A: 1}, // n = start
+					{Op: core.OpClosure, A: 1},    // push inc (with capture of local 1)
+					{Op: core.OpReturn},           // return inc
 				},
 			},
 			{ // 1: inc() - captures n from makeCounter (outer local 1)
@@ -1755,21 +1815,21 @@ func TestInterpret_ClosureUpvalue(t *testing.T) {
 				Constants: []any{int64(1)},
 				Captures:  []uint32{1}, // captures outer local 1 (n)
 				Code: []core.Instruction{
-					{Op: core.OpLoadLocal, A: 0},       // load n (via upvalue)
-					{Op: core.OpConst, A: 0},            // push 1
-					{Op: core.OpAdd},                    // n + 1
-					{Op: core.OpStoreLocal, A: 0},       // n = n + 1 (via upvalue)
-					{Op: core.OpLoadLocal, A: 0},        // load n
-					{Op: core.OpReturn},                  // return n
+					{Op: core.OpLoadLocal, A: 0},  // load n (via upvalue)
+					{Op: core.OpConst, A: 0},      // push 1
+					{Op: core.OpAdd},              // n + 1
+					{Op: core.OpStoreLocal, A: 0}, // n = n + 1 (via upvalue)
+					{Op: core.OpLoadLocal, A: 0},  // load n
+					{Op: core.OpReturn},           // return n
 				},
 			},
 			{ // 2: entry
 				Name: "entry", TypeIndex: 2,
 				Constants: []any{int64(0)},
 				Code: []core.Instruction{
-					{Op: core.OpConst, A: 0},            // push 0 (arg for makeCounter)
-					{Op: core.OpCall, A: 0, B: 1},       // makeCounter(0)
-					{Op: core.OpCall, A: 0, B: 0},       // c1() - should return 1
+					{Op: core.OpConst, A: 0},      // push 0 (arg for makeCounter)
+					{Op: core.OpCall, A: 0, B: 1}, // makeCounter(0)
+					{Op: core.OpCall, A: 0, B: 0}, // c1() - should return 1
 					{Op: core.OpReturn},
 				},
 			},

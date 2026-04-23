@@ -1736,3 +1736,35 @@ func TestRunCLIClassExampleRegression(t *testing.T) {
 		t.Fatalf("class.ia output missing 'counterv: 4': %q", runOutput)
 	}
 }
+
+func TestRunCLITryCatchExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "try_catch.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "try_catch.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm try_catch.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm try_catch.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm try_catch.ia sandbox failed: %s", stderr.String())
+	}
+	for _, expected := range []string{"finally1", "finally2", "finally3", "caught4: only-finally", "flag: 2"} {
+		if !strings.Contains(runOutput, expected) {
+			t.Fatalf("try_catch.ia output missing %q: %q", expected, runOutput)
+		}
+	}
+}
