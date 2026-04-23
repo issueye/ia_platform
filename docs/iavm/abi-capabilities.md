@@ -290,6 +290,8 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - `RunUntilSettled(ctx)` 会统一执行 `run -> wait -> resume` 闭环，直到模块完成或 context 结束
 - host capability acquire/call/poll 当前与 settled 主循环共享同一执行 context
 - `Options.MaxDuration` 可为整个 settled 执行过程建立统一 deadline
+- `Options.HostTimeout` 当前作用于单次 `AcquireCapability` / `Call` / `Poll`
+- `Options.WaitTimeout` 当前作用于单次 `Wait(handle)`
 - 当前 wakeup 模型仍是最小实现：宿主只需保证 wait 最终返回 done 或 context 结束，不要求主动事件推送协议
 
 当前 Promise resolve 后的 poll 结果对象包含以下字段：
@@ -309,6 +311,7 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - `Host.Wait(handle)` 若实现，则负责“阻塞直到值得再次恢复”
 - runtime 负责 settled 主循环；CLI `run-iavm` 当前直接复用 runtime 入口
 - 当 context 结束时，runtime 当前返回标准 context 错误，如 `context deadline exceeded`
+- operation timeout 与总 deadline 并存时，先到期者生效
 
 ## 4. Network Capability
 
