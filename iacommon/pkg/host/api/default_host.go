@@ -88,7 +88,7 @@ func (h *DefaultHost) Call(ctx context.Context, req CallRequest) (CallResult, er
 	case CapabilityFS:
 		return h.callFS(ctx, req)
 	case CapabilityNetwork:
-		return h.callNetwork(ctx, req)
+		return h.callNetwork(ctx, capability, req)
 	default:
 		return CallResult{}, fmt.Errorf("%w: %s", ErrCapabilityUnsupported, capability.Kind)
 	}
@@ -387,7 +387,7 @@ func (h *DefaultHost) releaseFileHandle(handleID uint64) (hostfs.FileHandle, err
 	return handle, nil
 }
 
-func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallResult, error) {
+func (h *DefaultHost) callNetwork(ctx context.Context, capability CapabilityInstance, req CallRequest) (CallResult, error) {
 	if h == nil || h.Network == nil {
 		return CallResult{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, CapabilityNetwork)
 	}
@@ -401,6 +401,9 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 		response, err := h.Network.HTTPFetch(ctx, parsed.toProviderRequest())
 		if err != nil {
 			return CallResult{}, markTransientNetworkError(err)
+		}
+		if shouldRetryHTTPStatus(capability.Meta, response.Status) {
+			return CallResult{}, MarkRetryable(fmt.Errorf("retryable http status: %d", response.Status))
 		}
 		return encodeNetworkHTTPFetchResponse(response), nil
 	case "network.dial":
@@ -501,6 +504,19 @@ func markTransientNetworkError(err error) error {
 		return MarkRetryable(err)
 	}
 	return err
+}
+
+func shouldRetryHTTPStatus(meta map[string]any, status int) bool {
+	statuses, ok := readIntList(meta, "retry_http_statuses", "retryHTTPStatuses")
+	if !ok {
+		return false
+	}
+	for _, candidate := range statuses {
+		if candidate == status {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *DefaultHost) storeSocketHandle(handle hostnet.SocketHandle) uint64 {
@@ -670,6 +686,37 @@ func readOptionalInt64Any(args map[string]any, keys ...string) (int64, error) {
 		return readInt64Value(key, value)
 	}
 	return 0, nil
+}
+
+func readIntList(values map[string]any, keys ...string) ([]int, bool) {
+	if values == nil {
+		return nil, false
+	}
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok || value == nil {
+			continue
+		}
+		switch typed := value.(type) {
+		case []int:
+			return append([]int(nil), typed...), true
+		case []any:
+			result := make([]int, 0, len(typed))
+			valid := true
+			for _, item := range typed {
+				parsed, err := readInt64Value(key, item)
+				if err != nil {
+					valid = false
+					break
+				}
+				result = append(result, int(parsed))
+			}
+			if valid {
+				return result, true
+			}
+		}
+	}
+	return nil, false
 }
 
 func readInt64Value(key string, value any) (int64, error) {
