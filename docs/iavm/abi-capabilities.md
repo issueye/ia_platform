@@ -326,6 +326,7 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - `host.call` 当前仅对显式 allowlist 中的 operation 开启超时重试；未列入 allowlist 的调用即使配置了 retry/backoff 也只执行一次
 - 默认 backoff 仍为确定性退避；仅当 `RetryJitter` 或 `Config.retry_jitter` 大于 `0` 时，runtime 才会在 base backoff 周围加入有界随机抖动
 - 当前 jitter 使用对称区间策略：`factor = 1 - jitter + 2 * jitter * random`，并继续受 `retry_backoff_max_ms` 上限约束
+- runtime 当前会在两类错误上触发 retry：`context deadline exceeded`，以及宿主通过 `iacommon/pkg/host/api.MarkRetryable(err)` 显式标记的 retryable error
 
 ## 4. Network Capability
 
@@ -494,6 +495,12 @@ Network capability kind 为 `network`。当前 `DefaultHost` 已稳定暴露 HTT
 | `ErrCapabilityUnsupported` | capability 或 operation 分发 | capability kind 或 operation 未支持 |
 
 runtime 可以先将这些错误包装成运行时错误；后续若接入 ialang 结构化异常，应保留原始错误分类。
+
+补充约定：
+
+- 宿主若希望某个错误被 runtime 视为“可安全重试”，可通过 `api.MarkRetryable(err)` 包装后返回
+- runtime 可通过 `api.IsRetryableError(err)` 识别该标记，并把它与 timeout retry 规则统一处理
+- `MarkRetryable` 只表达“该错误类别允许重试”，不自动绕过 `host.call` 的 allowlist 约束
 
 ## 5.1 IAVM `OpHostCall` 参数约定
 
