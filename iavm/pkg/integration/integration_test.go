@@ -395,6 +395,7 @@ func TestFullPipeline_FSHandleReadAndPoll(t *testing.T) {
 					{Op: core.OpLoadLocal, A: 0},
 					{Op: core.OpGetProp, A: 6},
 					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
 					{Op: core.OpGetProp, A: 10},
 					{Op: core.OpPop},
 					{Op: core.OpConst, A: 6},

@@ -349,8 +349,8 @@ func TestCapability_HostPollUsesHandleFromStack(t *testing.T) {
 		t.Fatal("expected poll result on stack")
 	}
 	result := vm.stack.Pop()
-	if result.Kind != core.ValueObjectRef {
-		t.Fatalf("expected object result, got %v", result.Kind)
+	if result.Kind != core.ValuePromise {
+		t.Fatalf("expected promise result, got %v", result.Kind)
 	}
 }
 

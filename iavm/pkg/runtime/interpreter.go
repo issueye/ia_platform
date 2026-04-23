@@ -449,7 +449,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if err != nil {
 			return fmt.Errorf("host.poll failed: %w", err)
 		}
-		vm.stack.Push(coreValueFromHostPoll(result))
+		vm.stack.Push(promiseValueFromHostPoll(handleID, coreValueFromHostPoll(result), result.Done, result.Error))
 
 	case core.OpDup:
 		val := vm.stack.Peek(0)

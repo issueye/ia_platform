@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
@@ -130,6 +132,28 @@ func (vm *VM) SuspensionState() *Suspension {
 	return vm.suspension
 }
 
+func (vm *VM) ResumeSuspension() error {
+	if vm.suspension == nil {
+		return fmt.Errorf("vm is not suspended")
+	}
+
+	resolved, err := vm.resolveSuspendedValue(vm.suspension.AwaitValue)
+	if err != nil {
+		if errors.Is(err, ErrPromisePending) {
+			return err
+		}
+		vm.suspension = nil
+		return err
+	}
+
+	vm.stack.Push(resolved)
+	vm.suspension = nil
+	if len(vm.frames) == 0 {
+		return nil
+	}
+	return Interpret(vm, vm.frames[len(vm.frames)-1].FunctionIndex)
+}
+
 func (vm *VM) resolveStringConstant(fn *module.Function, index uint32) (string, bool) {
 	var value any
 	if len(vm.mod.Constants) > 0 {
@@ -188,4 +212,36 @@ func (vm *VM) runFunctionSync(fnIdx uint32, args []core.Value, fnRef core.Value)
 		return core.Value{Kind: core.ValueNull}, nil
 	}
 	return child.stack.Pop(), nil
+}
+
+func (vm *VM) resolveSuspendedValue(v core.Value) (core.Value, error) {
+	if v.Kind != core.ValuePromise {
+		return v, nil
+	}
+
+	state, ok := v.Raw.(*promiseState)
+	if !ok || state == nil {
+		return core.Value{}, fmt.Errorf("invalid promise value")
+	}
+	if state.Status == promiseStatusPending && state.PollHandleID != 0 {
+		if vm.options.Host == nil {
+			return core.Value{}, fmt.Errorf("no host configured for suspended poll")
+		}
+		result, err := vm.options.Host.Poll(context.Background(), state.PollHandleID)
+		if err != nil {
+			return core.Value{}, fmt.Errorf("host.poll failed during resume: %w", err)
+		}
+		switch {
+		case !result.Done:
+			return core.Value{}, ErrPromisePending
+		case result.Error != "":
+			state.Status = promiseStatusRejected
+			state.Error = result.Error
+		default:
+			state.Status = promiseStatusResolved
+			state.Result = coreValueFromHostPoll(result)
+		}
+	}
+
+	return awaitValue(v)
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"iacommon/pkg/host/api"
 	compiler "ialang/pkg/lang/compiler"
 	frontend "ialang/pkg/lang/frontend"
 	bridge_ialang "iavm/pkg/bridge/ialang"
@@ -139,6 +140,53 @@ func TestAwaitRejectedPromiseReturnsError(t *testing.T) {
 	}
 	if vm.SuspensionState() != nil {
 		t.Fatal("rejected promise should not leave suspension state")
+	}
+}
+
+func TestHostPollAwaitSuspendsAndResumesRuntime(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+
+	mod := moduleForAsyncTest([]any{int64(9), "ready"}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpGetProp, A: 1},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	err = vm.Run()
+	if !errors.Is(err, ErrPromisePending) {
+		t.Fatalf("Run error = %v, want ErrPromisePending", err)
+	}
+	if vm.SuspensionState() == nil {
+		t.Fatal("expected suspension after pending host.poll await")
+	}
+
+	host.pollResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+	if err := vm.ResumeSuspension(); err != nil {
+		t.Fatalf("ResumeSuspension failed: %v", err)
+	}
+	if vm.SuspensionState() != nil {
+		t.Fatal("expected suspension to be cleared after resume")
+	}
+
+	result, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected resumed result on stack")
+	}
+	if result.Kind != core.ValueBool || !result.Raw.(bool) {
+		t.Fatalf("unexpected resumed result: %#v", result)
 	}
 }
 

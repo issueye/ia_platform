@@ -18,9 +18,10 @@ const (
 )
 
 type promiseState struct {
-	Status promiseStatus
-	Result core.Value
-	Error  string
+	Status       promiseStatus
+	Result       core.Value
+	Error        string
+	PollHandleID uint64
 }
 
 func pendingPromiseValue() core.Value {
@@ -49,6 +50,23 @@ func rejectedPromiseValue(message string) core.Value {
 			Status: promiseStatusRejected,
 			Error:  message,
 		},
+	}
+}
+
+func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, errText string) core.Value {
+	switch {
+	case !done:
+		return core.Value{
+			Kind: core.ValuePromise,
+			Raw: &promiseState{
+				Status:       promiseStatusPending,
+				PollHandleID: handleID,
+			},
+		}
+	case errText != "":
+		return rejectedPromiseValue(errText)
+	default:
+		return resolvedPromiseValue(result)
 	}
 }
 
