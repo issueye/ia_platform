@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 
@@ -399,7 +400,7 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 		}
 		response, err := h.Network.HTTPFetch(ctx, parsed.toProviderRequest())
 		if err != nil {
-			return CallResult{}, err
+			return CallResult{}, markTransientNetworkError(err)
 		}
 		return encodeNetworkHTTPFetchResponse(response), nil
 	case "network.dial":
@@ -409,7 +410,7 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 		}
 		handle, err := h.Network.Dial(ctx, parsed.Endpoint, parsed.Opts)
 		if err != nil {
-			return CallResult{}, err
+			return CallResult{}, markTransientNetworkError(err)
 		}
 		handleID := h.storeSocketHandle(handle)
 		return encodeNetworkDialResponse(handleID), nil
@@ -420,7 +421,7 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 		}
 		handle, err := h.Network.Listen(ctx, parsed.Endpoint, parsed.Opts)
 		if err != nil {
-			return CallResult{}, err
+			return CallResult{}, markTransientNetworkError(err)
 		}
 		handleID := h.storeListenerHandle(handle)
 		return encodeNetworkListenResponse(handleID), nil
@@ -435,7 +436,7 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 		}
 		socket, err := handle.Accept(ctx)
 		if err != nil {
-			return CallResult{}, err
+			return CallResult{}, markTransientNetworkError(err)
 		}
 		handleID := h.storeSocketHandle(socket)
 		return encodeNetworkAcceptResponse(handleID), nil
@@ -450,7 +451,7 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 		}
 		n, err := handle.Send(ctx, parsed.Data)
 		if err != nil {
-			return CallResult{}, err
+			return CallResult{}, markTransientNetworkError(err)
 		}
 		return encodeNetworkSendResponse(int64(n)), nil
 	case "network.recv":
@@ -464,7 +465,7 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 		}
 		data, err := handle.Recv(ctx, int(parsed.Size))
 		if err != nil {
-			return CallResult{}, err
+			return CallResult{}, markTransientNetworkError(err)
 		}
 		return encodeNetworkRecvResponse(data, int64(len(data))), nil
 	case "network.close":
@@ -489,6 +490,17 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 	default:
 		return CallResult{}, fmt.Errorf("unknown network operation: %w: %s", ErrCapabilityUnsupported, req.Operation)
 	}
+}
+
+func markTransientNetworkError(err error) error {
+	if err == nil || IsRetryableError(err) {
+		return err
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return MarkRetryable(err)
+	}
+	return err
 }
 
 func (h *DefaultHost) storeSocketHandle(handle hostnet.SocketHandle) uint64 {

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,11 +15,16 @@ type mockSocketHandle struct {
 	sendLog [][]byte
 	recvBuf []byte
 	closed  bool
+	sendErr error
+	recvErr error
 }
 
 func (h *mockSocketHandle) Send(ctx context.Context, data []byte) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
+	}
+	if h.sendErr != nil {
+		return 0, h.sendErr
 	}
 	copied := append([]byte(nil), data...)
 	h.sendLog = append(h.sendLog, copied)
@@ -28,6 +34,9 @@ func (h *mockSocketHandle) Send(ctx context.Context, data []byte) (int, error) {
 func (h *mockSocketHandle) Recv(ctx context.Context, size int) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if h.recvErr != nil {
+		return nil, h.recvErr
 	}
 	if size <= 0 || size > len(h.recvBuf) {
 		size = len(h.recvBuf)
@@ -46,11 +55,15 @@ func (h *mockSocketHandle) Close(ctx context.Context) error {
 type mockListenerHandle struct {
 	socket *mockSocketHandle
 	closed bool
+	err    error
 }
 
 func (h *mockListenerHandle) Accept(ctx context.Context) (hostnet.SocketHandle, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if h.err != nil {
+		return nil, h.err
 	}
 	return h.socket, nil
 }
@@ -69,10 +82,16 @@ type mockNetworkProvider struct {
 	lastEndpoint  hostnet.Endpoint
 	lastDialOpts  hostnet.DialOptions
 	lastListenOpt hostnet.ListenOptions
+	httpErr       error
+	dialErr       error
+	listenErr     error
 }
 
 func (p *mockNetworkProvider) HTTPFetch(ctx context.Context, req hostnet.HTTPRequest) (*hostnet.HTTPResponse, error) {
 	_, _ = ctx, req
+	if p.httpErr != nil {
+		return nil, p.httpErr
+	}
 	return nil, hostnet.ErrNetworkOperationNotSupported
 }
 
@@ -82,6 +101,9 @@ func (p *mockNetworkProvider) Dial(ctx context.Context, endpoint hostnet.Endpoin
 	}
 	p.lastEndpoint = endpoint
 	p.lastDialOpts = opts
+	if p.dialErr != nil {
+		return nil, p.dialErr
+	}
 	if p.dialSocket == nil {
 		p.dialSocket = &mockSocketHandle{}
 	}
@@ -94,10 +116,30 @@ func (p *mockNetworkProvider) Listen(ctx context.Context, endpoint hostnet.Endpo
 	}
 	p.lastEndpoint = endpoint
 	p.lastListenOpt = opts
+	if p.listenErr != nil {
+		return nil, p.listenErr
+	}
 	if p.listener == nil {
 		p.listener = &mockListenerHandle{socket: &mockSocketHandle{}}
 	}
 	return p.listener, nil
+}
+
+type transientNetError struct {
+	message string
+	timeout bool
+}
+
+func (e transientNetError) Error() string {
+	return fmt.Sprintf("transient network error: %s", e.message)
+}
+
+func (e transientNetError) Timeout() bool {
+	return e.timeout
+}
+
+func (e transientNetError) Temporary() bool {
+	return true
 }
 
 func TestDefaultHostCallNetworkHTTPFetch(t *testing.T) {
@@ -302,5 +344,182 @@ func TestDefaultHostCallNetworkListenAcceptClose(t *testing.T) {
 	}
 	if !listener.socket.closed {
 		t.Fatal("expected accepted socket to be closed")
+	}
+}
+
+func TestDefaultHostMarksTransientNetworkErrorsRetryable(t *testing.T) {
+	tests := []struct {
+		name  string
+		call  func(t *testing.T, host *DefaultHost, capability CapabilityInstance) error
+		setup func(provider *mockNetworkProvider)
+	}{
+		{
+			name: "http_fetch",
+			setup: func(provider *mockNetworkProvider) {
+				provider.httpErr = transientNetError{message: "fetch", timeout: true}
+			},
+			call: func(t *testing.T, host *DefaultHost, capability CapabilityInstance) error {
+				t.Helper()
+				_, err := host.Call(context.Background(), CallRequest{
+					CapabilityID: capability.ID,
+					Operation:    "network.http_fetch",
+					Args: map[string]any{
+						"url": "http://example.com",
+					},
+				})
+				return err
+			},
+		},
+		{
+			name: "dial",
+			setup: func(provider *mockNetworkProvider) {
+				provider.dialErr = transientNetError{message: "dial", timeout: true}
+			},
+			call: func(t *testing.T, host *DefaultHost, capability CapabilityInstance) error {
+				t.Helper()
+				_, err := host.Call(context.Background(), CallRequest{
+					CapabilityID: capability.ID,
+					Operation:    "network.dial",
+					Args: map[string]any{
+						"network": "tcp",
+						"host":    "example.com",
+						"port":    443,
+					},
+				})
+				return err
+			},
+		},
+		{
+			name: "send",
+			setup: func(provider *mockNetworkProvider) {
+				provider.dialSocket = &mockSocketHandle{sendErr: transientNetError{message: "send", timeout: false}}
+			},
+			call: func(t *testing.T, host *DefaultHost, capability CapabilityInstance) error {
+				t.Helper()
+				dialResult, err := host.Call(context.Background(), CallRequest{
+					CapabilityID: capability.ID,
+					Operation:    "network.dial",
+					Args: map[string]any{
+						"network": "tcp",
+						"host":    "example.com",
+						"port":    443,
+					},
+				})
+				if err != nil {
+					return err
+				}
+				handle := dialResult.Value["handle"].(uint64)
+				_, err = host.Call(context.Background(), CallRequest{
+					CapabilityID: capability.ID,
+					Operation:    "network.send",
+					Args: map[string]any{
+						"handle": handle,
+						"data":   []byte("ping"),
+					},
+				})
+				return err
+			},
+		},
+		{
+			name: "recv",
+			setup: func(provider *mockNetworkProvider) {
+				provider.dialSocket = &mockSocketHandle{recvErr: transientNetError{message: "recv", timeout: false}}
+			},
+			call: func(t *testing.T, host *DefaultHost, capability CapabilityInstance) error {
+				t.Helper()
+				dialResult, err := host.Call(context.Background(), CallRequest{
+					CapabilityID: capability.ID,
+					Operation:    "network.dial",
+					Args: map[string]any{
+						"network": "tcp",
+						"host":    "example.com",
+						"port":    443,
+					},
+				})
+				if err != nil {
+					return err
+				}
+				handle := dialResult.Value["handle"].(uint64)
+				_, err = host.Call(context.Background(), CallRequest{
+					CapabilityID: capability.ID,
+					Operation:    "network.recv",
+					Args: map[string]any{
+						"handle": handle,
+						"size":   4,
+					},
+				})
+				return err
+			},
+		},
+		{
+			name: "accept",
+			setup: func(provider *mockNetworkProvider) {
+				provider.listener = &mockListenerHandle{err: transientNetError{message: "accept", timeout: true}}
+			},
+			call: func(t *testing.T, host *DefaultHost, capability CapabilityInstance) error {
+				t.Helper()
+				listenResult, err := host.Call(context.Background(), CallRequest{
+					CapabilityID: capability.ID,
+					Operation:    "network.listen",
+					Args: map[string]any{
+						"network": "tcp",
+						"host":    "127.0.0.1",
+						"port":    9000,
+					},
+				})
+				if err != nil {
+					return err
+				}
+				handle := listenResult.Value["handle"].(uint64)
+				_, err = host.Call(context.Background(), CallRequest{
+					CapabilityID: capability.ID,
+					Operation:    "network.accept",
+					Args:         map[string]any{"handle": handle},
+				})
+				return err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &mockNetworkProvider{}
+			tt.setup(provider)
+			host := &DefaultHost{Network: provider}
+			capability, err := host.AcquireCapability(context.Background(), AcquireRequest{Kind: CapabilityNetwork})
+			if err != nil {
+				t.Fatalf("acquire network capability: %v", err)
+			}
+
+			err = tt.call(t, host, capability)
+			if err == nil {
+				t.Fatal("expected transient network error")
+			}
+			if !IsRetryableError(err) {
+				t.Fatalf("expected retryable network error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestDefaultHostDoesNotMarkPolicyNetworkErrorsRetryable(t *testing.T) {
+	host := &DefaultHost{Network: &hostnet.HTTPProvider{}}
+	capability, err := host.AcquireCapability(context.Background(), AcquireRequest{Kind: CapabilityNetwork})
+	if err != nil {
+		t.Fatalf("acquire network capability: %v", err)
+	}
+
+	_, err = host.Call(context.Background(), CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "network.http_fetch",
+		Args: map[string]any{
+			"url": "://bad-url",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected invalid request error")
+	}
+	if IsRetryableError(err) {
+		t.Fatalf("expected invalid request to remain non-retryable, got %v", err)
 	}
 }
