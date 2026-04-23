@@ -55,6 +55,35 @@ func (h *waitTestHost) Wait(ctx context.Context, handleID uint64) (api.PollResul
 	return h.waitResult, nil
 }
 
+type pollOnlyHostCLI struct {
+	pollResults []api.PollResult
+	pollLog     []uint64
+}
+
+func (h *pollOnlyHostCLI) AcquireCapability(ctx context.Context, req api.AcquireRequest) (api.CapabilityInstance, error) {
+	return api.CapabilityInstance{}, nil
+}
+
+func (h *pollOnlyHostCLI) ReleaseCapability(ctx context.Context, capID string) error {
+	return nil
+}
+
+func (h *pollOnlyHostCLI) Call(ctx context.Context, req api.CallRequest) (api.CallResult, error) {
+	return api.CallResult{}, nil
+}
+
+func (h *pollOnlyHostCLI) Poll(ctx context.Context, handleID uint64) (api.PollResult, error) {
+	h.pollLog = append(h.pollLog, handleID)
+	if len(h.pollResults) == 0 {
+		return api.PollResult{Done: true, Value: map[string]any{"ready": true}}, nil
+	}
+	result := h.pollResults[0]
+	if len(h.pollResults) > 1 {
+		h.pollResults = h.pollResults[1:]
+	}
+	return result, nil
+}
+
 func TestParseCLIArgs(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1207,8 +1236,8 @@ func TestRunIavmUntilSettledWaitsPendingSuspension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runtime.New failed: %v", err)
 	}
-	if err := runIavmUntilSettled(context.Background(), vm); err != nil {
-		t.Fatalf("runIavmUntilSettled failed: %v", err)
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled failed: %v", err)
 	}
 	if len(host.pollLog) != 1 || host.pollLog[0] != 21 {
 		t.Fatalf("unexpected poll log: %#v", host.pollLog)
@@ -1223,6 +1252,50 @@ func TestRunIavmUntilSettledWaitsPendingSuspension(t *testing.T) {
 	}
 	if result.Kind != core.ValueBool || !result.Raw.(bool) {
 		t.Fatalf("unexpected wait result: %#v", result)
+	}
+}
+
+func TestRunUntilSettledFallsBackWithoutWaiter(t *testing.T) {
+	host := &pollOnlyHostCLI{
+		pollResults: []api.PollResult{
+			{Done: false, Value: map[string]any{"ready": false}},
+			{Done: true, Value: map[string]any{"ready": true}},
+		},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Constants: []any{int64(23), "ready"},
+		Types:     []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 1},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := runtimepkg.New(mod, runtimepkg.Options{
+		Host:         host,
+		WaitInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("runtime.New failed: %v", err)
+	}
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled fallback failed: %v", err)
+	}
+	if len(host.pollLog) < 2 {
+		t.Fatalf("expected fallback polling, got %#v", host.pollLog)
 	}
 }
 

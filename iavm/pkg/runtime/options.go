@@ -9,6 +9,7 @@ type Options struct {
 	MaxSteps      int64
 	MaxMemory     int64
 	MaxDuration   time.Duration
+	WaitInterval  time.Duration
 	Host          api.Host
 	EnableTracing bool
 }

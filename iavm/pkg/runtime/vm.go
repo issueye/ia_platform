@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
+	"time"
 
 	"iacommon/pkg/host/api"
 )
@@ -180,25 +181,78 @@ func (vm *VM) WaitSuspension(ctx context.Context) error {
 	}
 
 	waiter, ok := vm.options.Host.(api.Waiter)
-	if !ok {
-		return fmt.Errorf("host does not support suspension wait")
+	if ok {
+		result, err := waiter.Wait(ctx, state.PollHandleID)
+		if err != nil {
+			return err
+		}
+		switch {
+		case !result.Done:
+			return ErrPromisePending
+		case result.Error != "":
+			state.Status = promiseStatusRejected
+			state.Error = result.Error
+		default:
+			state.Status = promiseStatusResolved
+			state.Result = coreValueFromHostPoll(result)
+		}
+		return vm.ResumeSuspension()
 	}
 
-	result, err := waiter.Wait(ctx, state.PollHandleID)
-	if err != nil {
-		return err
+	return vm.waitSuspensionByPolling(ctx, state)
+}
+
+func (vm *VM) RunUntilSettled(ctx context.Context) error {
+	if err := vm.Run(); err != nil {
+		if !errors.Is(err, ErrPromisePending) {
+			return err
+		}
+	} else {
+		return nil
 	}
-	switch {
-	case !result.Done:
-		return ErrPromisePending
-	case result.Error != "":
-		state.Status = promiseStatusRejected
-		state.Error = result.Error
-	default:
-		state.Status = promiseStatusResolved
-		state.Result = coreValueFromHostPoll(result)
+
+	for {
+		if err := vm.WaitSuspension(ctx); err != nil {
+			if errors.Is(err, ErrPromisePending) {
+				continue
+			}
+			return err
+		}
+		return nil
 	}
-	return vm.ResumeSuspension()
+}
+
+func (vm *VM) waitSuspensionByPolling(ctx context.Context, state *promiseState) error {
+	interval := vm.options.WaitInterval
+	if interval <= 0 {
+		interval = 10 * time.Millisecond
+	}
+	for {
+		result, err := vm.options.Host.Poll(ctx, state.PollHandleID)
+		if err != nil {
+			return fmt.Errorf("host.poll failed during wait: %w", err)
+		}
+		switch {
+		case result.Done && result.Error != "":
+			state.Status = promiseStatusRejected
+			state.Error = result.Error
+			return vm.ResumeSuspension()
+		case result.Done:
+			state.Status = promiseStatusResolved
+			state.Result = coreValueFromHostPoll(result)
+			return vm.ResumeSuspension()
+		}
+
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func (vm *VM) resolveStringConstant(fn *module.Function, index uint32) (string, bool) {

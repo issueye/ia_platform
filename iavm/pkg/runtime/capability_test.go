@@ -23,6 +23,11 @@ type mockHost struct {
 	waitErr    error
 }
 
+type pollOnlyHost struct {
+	pollLog     []uint64
+	pollResults []api.PollResult
+}
+
 func newMockHost() *mockHost {
 	return &mockHost{
 		caps: make(map[string]api.CapabilityInstance),
@@ -57,6 +62,30 @@ func (h *mockHost) Poll(ctx context.Context, handleID uint64) (api.PollResult, e
 func (h *mockHost) Wait(ctx context.Context, handleID uint64) (api.PollResult, error) {
 	h.waitLog = append(h.waitLog, handleID)
 	return h.waitResult, h.waitErr
+}
+
+func (h *pollOnlyHost) AcquireCapability(ctx context.Context, req api.AcquireRequest) (api.CapabilityInstance, error) {
+	return api.CapabilityInstance{}, nil
+}
+
+func (h *pollOnlyHost) ReleaseCapability(ctx context.Context, capID string) error {
+	return nil
+}
+
+func (h *pollOnlyHost) Call(ctx context.Context, req api.CallRequest) (api.CallResult, error) {
+	return api.CallResult{}, nil
+}
+
+func (h *pollOnlyHost) Poll(ctx context.Context, handleID uint64) (api.PollResult, error) {
+	h.pollLog = append(h.pollLog, handleID)
+	if len(h.pollResults) == 0 {
+		return api.PollResult{Done: true, Value: map[string]any{"ready": true}}, nil
+	}
+	result := h.pollResults[0]
+	if len(h.pollResults) > 1 {
+		h.pollResults = h.pollResults[1:]
+	}
+	return result, nil
 }
 
 func TestCapability_AcquireAndCall(t *testing.T) {

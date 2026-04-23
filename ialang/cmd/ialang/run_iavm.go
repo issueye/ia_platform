@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
@@ -36,29 +35,9 @@ func executeRunIavmCommand(cmd cliCommand, stderr io.Writer) error {
 		return fmt.Errorf("[runtime] vm init error: %w", err)
 	}
 
-	if err := runIavmUntilSettled(context.Background(), vm); err != nil {
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
 		return fmt.Errorf("[runtime] %w", err)
 	}
 
 	return nil
-}
-
-func runIavmUntilSettled(ctx context.Context, vm *runtime.VM) error {
-	if err := vm.Run(); err != nil {
-		if !errors.Is(err, runtime.ErrPromisePending) {
-			return err
-		}
-	} else {
-		return nil
-	}
-
-	for {
-		if err := vm.WaitSuspension(ctx); err != nil {
-			if errors.Is(err, runtime.ErrPromisePending) {
-				continue
-			}
-			return err
-		}
-		return nil
-	}
 }

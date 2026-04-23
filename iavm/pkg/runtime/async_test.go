@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"iacommon/pkg/host/api"
 	compiler "ialang/pkg/lang/compiler"
@@ -232,6 +233,86 @@ func TestHostPollWaitSuspensionResumesRuntime(t *testing.T) {
 	}
 	if result.Kind != core.ValueBool || !result.Raw.(bool) {
 		t.Fatalf("unexpected waited result: %#v", result)
+	}
+}
+
+func TestHostPollWaitSuspensionFallsBackToPolling(t *testing.T) {
+	host := &pollOnlyHost{
+		pollResults: []api.PollResult{
+			{Done: false, Value: map[string]any{"ready": false}},
+			{Done: true, Value: map[string]any{"ready": true}},
+		},
+	}
+
+	mod := moduleForAsyncTest([]any{int64(13), "ready"}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpGetProp, A: 1},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		WaitInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	err = vm.Run()
+	if !errors.Is(err, ErrPromisePending) {
+		t.Fatalf("Run error = %v, want ErrPromisePending", err)
+	}
+
+	if err := vm.WaitSuspension(context.Background()); err != nil {
+		t.Fatalf("WaitSuspension failed: %v", err)
+	}
+	if len(host.pollLog) < 2 {
+		t.Fatalf("expected fallback poll log, got %#v", host.pollLog)
+	}
+
+	result, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected fallback result on stack")
+	}
+	if result.Kind != core.ValueBool || !result.Raw.(bool) {
+		t.Fatalf("unexpected fallback result: %#v", result)
+	}
+}
+
+func TestRunUntilSettledResolvesPendingPromise(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := moduleForAsyncTest([]any{int64(15), "ready"}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpGetProp, A: 1},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled failed: %v", err)
+	}
+
+	result, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected settled result on stack")
+	}
+	if result.Kind != core.ValueBool || !result.Raw.(bool) {
+		t.Fatalf("unexpected settled result: %#v", result)
 	}
 }
 
