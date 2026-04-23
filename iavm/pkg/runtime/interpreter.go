@@ -7,6 +7,19 @@ import (
 	"iavm/pkg/core"
 )
 
+const (
+	classKindKey        = "__iavm_kind"
+	classKindClass      = "class"
+	classKindInstance   = "instance"
+	classNameKey        = "__iavm_name"
+	classParentKey      = "__iavm_parent"
+	classMethodsKey     = "__iavm_methods"
+	classStaticKey      = "__iavm_static_methods"
+	classGettersKey     = "__iavm_getters"
+	classSettersKey     = "__iavm_setters"
+	instanceClassRefKey = "__iavm_class"
+)
+
 func Interpret(vm *VM, entryFuncIndex uint32) error {
 	if entryFuncIndex >= uint32(len(vm.mod.Functions)) {
 		return fmt.Errorf("function index %d out of range", entryFuncIndex)
@@ -270,49 +283,10 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 				args[i] = vm.stack.Pop()
 			}
 
-			// Now pop function reference
 			fnRef := vm.stack.Pop()
-			var fnIdx uint32
-			switch fnRef.Kind {
-			case core.ValueFuncRef:
-				fnIdx = fnRef.Raw.(uint32)
-			case core.ValueI64:
-				fnIdx = uint32(fnRef.Raw.(int64))
-			case core.ValueString:
-				// Builtin function name
-				name := fnRef.Raw.(string)
-				builtin, ok := vm.builtins[name]
-				if !ok {
-					return fmt.Errorf("builtin function not found: %s", name)
-				}
-				result := builtin(args)
-				vm.stack.Push(result)
-				return nil
-			default:
-				return fmt.Errorf("cannot call value of kind %v", fnRef.Kind)
+			if err := vm.invokeCallable(fnRef, args); err != nil {
+				return err
 			}
-			if int(fnIdx) >= len(vm.mod.Functions) {
-				return fmt.Errorf("function index %d out of range", fnIdx)
-			}
-			targetFn := &vm.mod.Functions[fnIdx]
-			newFrame := NewFrame(fnIdx, targetFn, uint32(vm.stack.Size()))
-			for i := 0; i < argCount; i++ {
-				if i < len(newFrame.Locals) {
-					newFrame.Locals[i] = args[i]
-				}
-			}
-			// Propagate upvalues from closure to new frame
-			if len(fnRef.Upvalues) > 0 {
-				if newFrame.UpvalueMap == nil {
-					newFrame.UpvalueMap = make(map[uint32]*core.Upvalue)
-				}
-				for i, uv := range fnRef.Upvalues {
-					if i < len(newFrame.Locals) {
-						newFrame.UpvalueMap[uint32(i)] = uv
-					}
-				}
-			}
-			vm.frames = append(vm.frames, newFrame)
 		}
 
 	case core.OpReturn:
@@ -341,6 +315,13 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 		vm.stack.Push(core.Value{Kind: core.ValueObjectRef, Raw: m})
 
+	case core.OpClass:
+		classVal, err := vm.buildClassValue(inst.A)
+		if err != nil {
+			return err
+		}
+		vm.stack.Push(classVal)
+
 	case core.OpGetProp:
 		obj := vm.stack.Pop()
 		if obj.Kind != core.ValueObjectRef {
@@ -355,7 +336,11 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			return fmt.Errorf("property name at index %d is not a string", inst.A)
 		}
 		m := obj.Raw.(map[string]core.Value)
-		vm.stack.Push(m[name])
+		if val, ok := vm.getObjectProperty(obj, m, name); ok {
+			vm.stack.Push(val)
+		} else {
+			vm.stack.Push(core.Value{Kind: core.ValueNull})
+		}
 
 	case core.OpSetProp:
 		val := vm.stack.Pop()
@@ -372,7 +357,9 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			return fmt.Errorf("property name at index %d is not a string", inst.A)
 		}
 		m := obj.Raw.(map[string]core.Value)
-		m[name] = val
+		if err := vm.setObjectProperty(obj, m, name, val); err != nil {
+			return err
+		}
 
 	case core.OpImportFunc:
 		// Simplified: push a placeholder function reference
@@ -559,6 +546,24 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		vm.exception = vm.stack.Pop()
 		return core.ErrUncaughtException
 
+	case core.OpNewInstance:
+		argCount := int(inst.A)
+		args := make([]core.Value, argCount)
+		for i := argCount - 1; i >= 0; i-- {
+			args[i] = vm.stack.Pop()
+		}
+		classVal := vm.stack.Pop()
+		instance, ctor, err := vm.instantiateClass(classVal)
+		if err != nil {
+			return err
+		}
+		vm.stack.Push(instance)
+		if ctor.Kind != core.ValueNull {
+			if err := vm.invokeCallable(bindReceiver(ctor, instance), args); err != nil {
+				return err
+			}
+		}
+
 	default:
 		return fmt.Errorf("unimplemented opcode: %v", inst.Op)
 	}
@@ -579,6 +584,264 @@ func (vm *VM) constantAt(frame *Frame, index uint32) (any, error) {
 		return nil, fmt.Errorf("constant index %d out of range", index)
 	}
 	return fn.Constants[index], nil
+}
+
+func (vm *VM) invokeCallable(fnRef core.Value, args []core.Value) error {
+	var fnIdx uint32
+	switch fnRef.Kind {
+	case core.ValueFuncRef:
+		fnIdx = fnRef.Raw.(uint32)
+	case core.ValueI64:
+		fnIdx = uint32(fnRef.Raw.(int64))
+	case core.ValueString:
+		name := fnRef.Raw.(string)
+		builtin, ok := vm.builtins[name]
+		if !ok {
+			return fmt.Errorf("builtin function not found: %s", name)
+		}
+		vm.stack.Push(builtin(args))
+		return nil
+	default:
+		return fmt.Errorf("cannot call value of kind %v", fnRef.Kind)
+	}
+	return vm.pushCallFrame(fnIdx, args, fnRef)
+}
+
+func (vm *VM) pushCallFrame(fnIdx uint32, args []core.Value, fnRef core.Value) error {
+	if int(fnIdx) >= len(vm.mod.Functions) {
+		return fmt.Errorf("function index %d out of range", fnIdx)
+	}
+	targetFn := &vm.mod.Functions[fnIdx]
+	newFrame := NewFrame(fnIdx, targetFn, uint32(vm.stack.Size()))
+
+	if fnRef.BoundReceiver != nil && targetFn.HasThis && int(targetFn.ThisLocal) < len(newFrame.Locals) {
+		newFrame.Locals[targetFn.ThisLocal] = *fnRef.BoundReceiver
+	}
+
+	localIdx := 0
+	for _, arg := range args {
+		for targetFn.HasThis && localIdx == int(targetFn.ThisLocal) {
+			localIdx++
+		}
+		if localIdx < len(newFrame.Locals) {
+			newFrame.Locals[localIdx] = arg
+		}
+		localIdx++
+	}
+
+	if len(fnRef.Upvalues) > 0 {
+		if newFrame.UpvalueMap == nil {
+			newFrame.UpvalueMap = make(map[uint32]*core.Upvalue)
+		}
+		for i, uv := range fnRef.Upvalues {
+			if i < len(newFrame.Locals) {
+				newFrame.UpvalueMap[uint32(i)] = uv
+			}
+		}
+	}
+
+	vm.frames = append(vm.frames, newFrame)
+	return nil
+}
+
+func bindReceiver(fn core.Value, receiver core.Value) core.Value {
+	if fn.Kind != core.ValueFuncRef {
+		return fn
+	}
+	bound := receiver
+	fn.BoundReceiver = &bound
+	return fn
+}
+
+func (vm *VM) buildClassValue(encoded uint32) (core.Value, error) {
+	privateFieldCount := int((encoded >> 16) & 0xF)
+	hasParent := (encoded >> 20) & 1
+	instanceMethodCount := int(encoded & 0xF)
+	staticMethodCount := int((encoded >> 4) & 0xF)
+	getterCount := int((encoded >> 8) & 0xF)
+	setterCount := int((encoded >> 12) & 0xF)
+
+	privateFields := make([]string, 0, privateFieldCount)
+	for i := 0; i < privateFieldCount; i++ {
+		fieldVal := vm.stack.Pop()
+		if fieldVal.Kind != core.ValueString {
+			return core.Value{}, fmt.Errorf("private field name must be string, got %v", fieldVal.Kind)
+		}
+		privateFields = append(privateFields, fieldVal.Raw.(string))
+	}
+
+	setters, err := vm.popClassMethodTable(setterCount)
+	if err != nil {
+		return core.Value{}, err
+	}
+	getters, err := vm.popClassMethodTable(getterCount)
+	if err != nil {
+		return core.Value{}, err
+	}
+	staticMethods, err := vm.popClassMethodTable(staticMethodCount)
+	if err != nil {
+		return core.Value{}, err
+	}
+	instanceMethods, err := vm.popClassMethodTable(instanceMethodCount)
+	if err != nil {
+		return core.Value{}, err
+	}
+
+	classNameVal := vm.stack.Pop()
+	if classNameVal.Kind != core.ValueString {
+		return core.Value{}, fmt.Errorf("class name must be string, got %v", classNameVal.Kind)
+	}
+
+	parent := core.Value{Kind: core.ValueNull}
+	if hasParent == 1 {
+		parentNameVal := vm.stack.Pop()
+		if parentNameVal.Kind != core.ValueString {
+			return core.Value{}, fmt.Errorf("parent class name must be string, got %v", parentNameVal.Kind)
+		}
+		parent = vm.lookupGlobalByName(parentNameVal.Raw.(string))
+		if !isClassValue(parent) {
+			return core.Value{}, fmt.Errorf("parent class not found: %s", parentNameVal.Raw.(string))
+		}
+	}
+
+	classMap := map[string]core.Value{
+		classKindKey:    {Kind: core.ValueString, Raw: classKindClass},
+		classNameKey:    classNameVal,
+		classParentKey:  parent,
+		classMethodsKey: {Kind: core.ValueObjectRef, Raw: instanceMethods},
+		classStaticKey:  {Kind: core.ValueObjectRef, Raw: staticMethods},
+		classGettersKey: {Kind: core.ValueObjectRef, Raw: getters},
+		classSettersKey: {Kind: core.ValueObjectRef, Raw: setters},
+	}
+	for _, field := range privateFields {
+		classMap[field] = core.Value{Kind: core.ValueNull}
+	}
+	return core.Value{Kind: core.ValueObjectRef, Raw: classMap}, nil
+}
+
+func (vm *VM) popClassMethodTable(count int) (map[string]core.Value, error) {
+	table := make(map[string]core.Value, count)
+	for i := 0; i < count; i++ {
+		methodVal := vm.stack.Pop()
+		nameVal := vm.stack.Pop()
+		if nameVal.Kind != core.ValueString {
+			return nil, fmt.Errorf("class method name must be string, got %v", nameVal.Kind)
+		}
+		if methodVal.Kind != core.ValueFuncRef {
+			return nil, fmt.Errorf("class method must be function, got %v", methodVal.Kind)
+		}
+		table[nameVal.Raw.(string)] = methodVal
+	}
+	return table, nil
+}
+
+func (vm *VM) lookupGlobalByName(name string) core.Value {
+	for i, g := range vm.mod.Globals {
+		if g.Name == name && i < len(vm.globals) {
+			return vm.globals[i]
+		}
+	}
+	return core.Value{Kind: core.ValueNull}
+}
+
+func (vm *VM) getObjectProperty(obj core.Value, m map[string]core.Value, name string) (core.Value, bool) {
+	if isInstanceValue(obj) {
+		if val, ok := m[name]; ok && !isReservedObjectKey(name) {
+			return val, true
+		}
+		classVal := m[instanceClassRefKey]
+		if getter, ok := lookupClassAccessor(classVal, classGettersKey, name); ok {
+			return bindReceiver(getter, obj), true
+		}
+		if method, ok := lookupClassAccessor(classVal, classMethodsKey, name); ok {
+			return bindReceiver(method, obj), true
+		}
+		return core.Value{Kind: core.ValueNull}, false
+	}
+	if isClassValue(obj) {
+		if method, ok := lookupClassAccessor(obj, classStaticKey, name); ok {
+			return method, true
+		}
+	}
+	if val, ok := m[name]; ok {
+		return val, true
+	}
+	return core.Value{Kind: core.ValueNull}, false
+}
+
+func (vm *VM) setObjectProperty(obj core.Value, m map[string]core.Value, name string, val core.Value) error {
+	if isInstanceValue(obj) {
+		classVal := m[instanceClassRefKey]
+		if setter, ok := lookupClassAccessor(classVal, classSettersKey, name); ok {
+			return vm.invokeCallable(bindReceiver(setter, obj), []core.Value{val})
+		}
+		m[name] = val
+		return nil
+	}
+	m[name] = val
+	return nil
+}
+
+func (vm *VM) instantiateClass(classVal core.Value) (core.Value, core.Value, error) {
+	if !isClassValue(classVal) {
+		return core.Value{}, core.Value{}, fmt.Errorf("cannot instantiate non-class value")
+	}
+	instanceMap := map[string]core.Value{
+		classKindKey:        {Kind: core.ValueString, Raw: classKindInstance},
+		instanceClassRefKey: classVal,
+	}
+	instance := core.Value{Kind: core.ValueObjectRef, Raw: instanceMap}
+	ctor, _ := lookupClassAccessor(classVal, classMethodsKey, "constructor")
+	return instance, ctor, nil
+}
+
+func isReservedObjectKey(name string) bool {
+	switch name {
+	case classKindKey, classNameKey, classParentKey, classMethodsKey, classStaticKey, classGettersKey, classSettersKey, instanceClassRefKey:
+		return true
+	default:
+		return false
+	}
+}
+
+func isClassValue(v core.Value) bool {
+	return objectKind(v) == classKindClass
+}
+
+func isInstanceValue(v core.Value) bool {
+	return objectKind(v) == classKindInstance
+}
+
+func objectKind(v core.Value) string {
+	if v.Kind != core.ValueObjectRef {
+		return ""
+	}
+	m, ok := v.Raw.(map[string]core.Value)
+	if !ok {
+		return ""
+	}
+	if kind, ok := m[classKindKey]; ok && kind.Kind == core.ValueString {
+		return kind.Raw.(string)
+	}
+	return ""
+}
+
+func lookupClassAccessor(classVal core.Value, tableKey, name string) (core.Value, bool) {
+	current := classVal
+	for isClassValue(current) {
+		classMap := current.Raw.(map[string]core.Value)
+		if tableVal, ok := classMap[tableKey]; ok && tableVal.Kind == core.ValueObjectRef {
+			if method, ok := tableVal.Raw.(map[string]core.Value)[name]; ok {
+				return method, true
+			}
+		}
+		parent, ok := classMap[classParentKey]
+		if !ok || parent.Kind == core.ValueNull {
+			break
+		}
+		current = parent
+	}
+	return core.Value{}, false
 }
 
 func coreValueFromAny(v any) core.Value {

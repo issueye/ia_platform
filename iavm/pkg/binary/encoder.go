@@ -121,6 +121,14 @@ func encodeFunctionSection(m *module.Module) []byte {
 		for _, c := range fn.Captures {
 			binary.Write(&buf, binary.LittleEndian, c)
 		}
+		if m.FeatureFlags&module.FeatureFlagFunctionThisBindings != 0 {
+			if fn.HasThis {
+				buf.WriteByte(1)
+			} else {
+				buf.WriteByte(0)
+			}
+			binary.Write(&buf, binary.LittleEndian, fn.ThisLocal)
+		}
 	}
 	return buf.Bytes()
 }

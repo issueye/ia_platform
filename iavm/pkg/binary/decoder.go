@@ -3,9 +3,9 @@ package binary
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
+	"math"
 )
 
 type decoder struct {
@@ -134,6 +134,10 @@ func decodeFunctionSection(mod *module.Module, d *decoder) error {
 			mod.Functions[i].Captures = make([]uint32, captureCount)
 			for j := 0; j < int(captureCount); j++ {
 				mod.Functions[i].Captures[j] = d.readUint32()
+			}
+			if mod.FeatureFlags&module.FeatureFlagFunctionThisBindings != 0 {
+				mod.Functions[i].HasThis = d.readByte() == 1
+				mod.Functions[i].ThisLocal = d.readUint32()
 			}
 		}
 	}

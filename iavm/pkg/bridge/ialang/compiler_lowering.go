@@ -122,6 +122,12 @@ func LowerToModule(input any) (*module.Module, error) {
 
 	// Build module-level constant pool and remap per-function constant references
 	buildModuleConstantPool(mod)
+	for _, fn := range mod.Functions {
+		if fn.HasThis {
+			mod.FeatureFlags |= module.FeatureFlagFunctionThisBindings
+			break
+		}
+	}
 
 	return mod, nil
 }
@@ -210,6 +216,10 @@ func collectInnerFunctions(chunk *bytecode.Chunk) map[int]*bytecode.FunctionTemp
 func buildLocalMap(ft *bytecode.FunctionTemplate) (map[string]uint32, uint32) {
 	localMap := make(map[string]uint32)
 	var nextLocalIdx uint32
+	if functionUsesThis(ft) {
+		localMap["this"] = nextLocalIdx
+		nextLocalIdx++
+	}
 
 	for _, param := range ft.Params {
 		localMap[param] = nextLocalIdx
@@ -248,6 +258,21 @@ func buildLocalMap(ft *bytecode.FunctionTemplate) (map[string]uint32, uint32) {
 	return localMap, nextLocalIdx
 }
 
+func functionUsesThis(ft *bytecode.FunctionTemplate) bool {
+	if ft == nil || ft.Chunk == nil {
+		return false
+	}
+	for _, inst := range ft.Chunk.Code {
+		if (inst.Op == bytecode.OpGetName || inst.Op == bytecode.OpSetName || inst.Op == bytecode.OpDefineName) &&
+			int(inst.A) < len(ft.Chunk.Constants) {
+			if name, ok := ft.Chunk.Constants[inst.A].(string); ok && name == "this" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32, funcMap map[int]int, parentLocals map[string]uint32, mod *module.Module) module.Function {
 	fn := module.Function{
 		Name:      ft.Name,
@@ -255,6 +280,10 @@ func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32,
 	}
 
 	localMap, nextLocalIdx := buildLocalMap(ft)
+	if thisLocal, ok := localMap["this"]; ok {
+		fn.HasThis = true
+		fn.ThisLocal = thisLocal
+	}
 
 	// Detect captures: names in the function body that are in parentLocals but not in localMap
 	var captureIndices []uint32
@@ -691,7 +720,8 @@ func lowerInstructions(ialangInsts []bytecode.Instruction, funcMap map[int]int) 
 			}
 
 		case bytecode.OpClass:
-			iavmInst.Op = core.OpMakeObject
+			iavmInst.Op = core.OpClass
+			iavmInst.A = uint32(inst.A)
 
 		case bytecode.OpNew:
 			iavmInst.Op = core.OpNewInstance

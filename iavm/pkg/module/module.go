@@ -2,6 +2,8 @@ package module
 
 import "iavm/pkg/core"
 
+const FeatureFlagFunctionThisBindings uint64 = 1 << 0
+
 type Module struct {
 	Magic        string
 	Version      uint16
@@ -33,6 +35,8 @@ type Function struct {
 	MaxStack     uint32
 	IsEntryPoint bool
 	Captures     []uint32 // outer local indices captured by this closure
+	HasThis      bool
+	ThisLocal    uint32
 }
 
 type Global struct {

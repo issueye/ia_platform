@@ -440,6 +440,8 @@ func stackEffect(inst core.Instruction, m *module.Module) (int, int, error) {
 		return 2, 1, nil
 	case core.OpMakeArray:
 		return int(inst.A), 1, nil
+	case core.OpClass:
+		return classStackEffect(inst), 1, nil
 	case core.OpGetProp:
 		return 1, 1, nil
 	case core.OpSetProp:
@@ -475,6 +477,17 @@ func callStackEffect(inst core.Instruction, m *module.Module) (int, int, error) 
 
 	argCount := int(inst.A)
 	return argCount + 1, 1, nil
+}
+
+func classStackEffect(inst core.Instruction) int {
+	privateFieldCount := int((inst.A >> 16) & 0xF)
+	hasParent := int((inst.A >> 20) & 1)
+	instanceMethodCount := int(inst.A & 0xF)
+	staticMethodCount := int((inst.A >> 4) & 0xF)
+	getterCount := int((inst.A >> 8) & 0xF)
+	setterCount := int((inst.A >> 12) & 0xF)
+	methodPairs := instanceMethodCount + staticMethodCount + getterCount + setterCount
+	return hasParent + 1 + privateFieldCount + (methodPairs * 2)
 }
 
 func stackSuccessors(inst core.Instruction, pc int, codeLen int) []int {
@@ -590,7 +603,7 @@ func isValidValueKind(kind core.ValueKind) bool {
 }
 
 func isValidOpcode(op core.OpCode) bool {
-	return op <= core.OpClosure
+	return op <= core.OpNewInstance
 }
 
 func verifyStackDepth(fn *module.Function) error {
@@ -634,6 +647,9 @@ func stackDelta(inst core.Instruction) int {
 		core.OpHostPoll, core.OpDup, core.OpClosure:
 		return 1
 
+	case core.OpClass:
+		return 1 - classStackEffect(inst)
+
 	case core.OpStoreLocal, core.OpStoreGlobal, core.OpPop:
 		return -1
 
@@ -669,6 +685,9 @@ func stackDelta(inst core.Instruction) int {
 
 	case core.OpHostCall:
 		return 0
+
+	case core.OpNewInstance:
+		return -int(inst.A)
 
 	default:
 		return 0

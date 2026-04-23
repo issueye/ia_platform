@@ -165,15 +165,15 @@ For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.3-runtime-semantic
 
 ---
 
-## 0.0.4 Closure, Class & Remaining Fixes（计划中）
+## 0.0.4 Closure, Class & Remaining Fixes
 
-`0.0.4` 将在 `0.0.3` 基础上完成以下目标：
+`0.0.4` 已在 `0.0.3` 基础上完成以下目标：
 
 - 修复对象属性访问（`data.ia`）
 - 位运算 F64 coercion（`bitwise.ia`）
 - 闭包 upvalue 捕获（`closure.ia`）
 - 基本 class/this 绑定（`class.ia` 简化版）
-- smoke matrix 总数 ≥ 10
+- smoke matrix 总数 ≥ 10（当前稳定矩阵 11 项）
 
 For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.4-closure-class-plan.md`.
 

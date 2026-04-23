@@ -15,17 +15,3 @@ let c = new Counter(2);
 print("counter1: " + c.inc());
 print("counter2: " + c.inc());
 print("counterv: " + c.value());
-
-class Agent {
-  constructor(name) {
-    this.name = name;
-  }
-  async greet(topic) {
-    return this.name + ":" + topic;
-  }
-}
-
-let a = new Agent("bot");
-let p = a.greet("plan");
-let msg = await p;
-print("agent: " + msg);

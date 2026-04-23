@@ -16,9 +16,10 @@ const (
 )
 
 type Value struct {
-	Kind     ValueKind
-	Raw      any
-	Upvalues []*Upvalue // captured upvalue cells (for ValueFuncRef closures)
+	Kind          ValueKind
+	Raw           any
+	Upvalues      []*Upvalue // captured upvalue cells (for ValueFuncRef closures)
+	BoundReceiver *Value     // bound receiver for instance method calls
 }
 
 type Upvalue struct {

@@ -53,6 +53,7 @@ const (
 	OpObjectKeys
 	OpJumpIfNullish
 	OpJumpIfNotNullish
+	OpClass
 	OpClosure
 	OpNewInstance
 )

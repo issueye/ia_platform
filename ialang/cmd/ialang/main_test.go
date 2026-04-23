@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"io"
 	bc "iacommon/pkg/ialang/bytecode"
 	moduleapi "iacommon/pkg/ialang/module"
 	"iacommon/pkg/ialang/packagefile"
@@ -11,6 +10,7 @@ import (
 	"iavm/pkg/binary"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1698,5 +1698,41 @@ func TestRunCLIClosureExampleRegression(t *testing.T) {
 	}
 	if !strings.Contains(runOutput, "c2-1: 11") {
 		t.Fatalf("closure.ia output missing 'c2-1: 11': %q", runOutput)
+	}
+}
+
+func TestRunCLIClassExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "class.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "class.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm class.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm class.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm class.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "counter1: 3") {
+		t.Fatalf("class.ia output missing 'counter1: 3': %q", runOutput)
+	}
+	if !strings.Contains(runOutput, "counter2: 4") {
+		t.Fatalf("class.ia output missing 'counter2: 4': %q", runOutput)
+	}
+	if !strings.Contains(runOutput, "counterv: 4") {
+		t.Fatalf("class.ia output missing 'counterv: 4': %q", runOutput)
 	}
 }
