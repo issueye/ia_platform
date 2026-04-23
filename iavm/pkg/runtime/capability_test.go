@@ -10,6 +10,7 @@ import (
 )
 
 type mockHost struct {
+	acquireLog []api.AcquireRequest
 	caps       map[string]api.CapabilityInstance
 	callLog    []api.CallRequest
 	callResult api.CallResult
@@ -26,6 +27,7 @@ func newMockHost() *mockHost {
 }
 
 func (h *mockHost) AcquireCapability(ctx context.Context, req api.AcquireRequest) (api.CapabilityInstance, error) {
+	h.acquireLog = append(h.acquireLog, req)
 	cap := api.CapabilityInstance{
 		ID:   string(req.Kind),
 		Kind: req.Kind,
@@ -349,5 +351,61 @@ func TestCapability_HostPollUsesHandleFromStack(t *testing.T) {
 	result := vm.stack.Pop()
 	if result.Kind != core.ValueObjectRef {
 		t.Fatalf("expected object result, got %v", result.Kind)
+	}
+}
+
+func TestCapability_ImportCapPassesModuleConfig(t *testing.T) {
+	host := newMockHost()
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"fs"},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityFS,
+				Config: map[string]any{
+					"rights": []string{"read"},
+					"preopens": []any{
+						map[string]any{
+							"virtual_path": "/workspace",
+							"real_path":    "C:/tmp/workspace",
+							"read_only":    true,
+						},
+					},
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	if len(host.acquireLog) != 1 {
+		t.Fatalf("expected 1 capability acquire, got %d", len(host.acquireLog))
+	}
+	if got := host.acquireLog[0].Config["rights"]; got == nil {
+		t.Fatal("expected rights config to be forwarded")
+	}
+	preopens, ok := host.acquireLog[0].Config["preopens"].([]any)
+	if !ok || len(preopens) != 1 {
+		t.Fatalf("expected preopens to be forwarded, got %#v", host.acquireLog[0].Config["preopens"])
 	}
 }

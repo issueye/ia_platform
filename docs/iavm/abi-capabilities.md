@@ -4,7 +4,7 @@
 
 本文档记录当前 IAVM Host Capability ABI 的稳定约定，覆盖 `iacommon/pkg/host/api` 与 `DefaultHost` 已实现的 operation。
 
-当前 ABI 仍采用 `map[string]any` 作为参数和返回值承载格式，目的是先稳定模块、runtime、SDK 与 CLI 之间的边界。后续可以在不改变 operation 名称的前提下，为高频操作增加强类型 adapter。
+当前 ABI 仍采用 `map[string]any` 作为参数和返回值承载格式，目的是先稳定模块、runtime、SDK 与 CLI 之间的边界。`0.0.5`/`0.0.6` 已为高频 FS / Network operation 接入第一轮 typed adapter，同时保留 `map[string]any` 作为兼容承载层。
 
 ## 2. Host 接口
 
@@ -37,7 +37,7 @@ type AcquireRequest struct {
 }
 ```
 
-`DefaultHost` 当前会从 `Config["rights"]` 读取字符串数组并写入 `CapabilityInstance.Rights`，同时将 `Config` 克隆到 `CapabilityInstance.Meta`。具体权限检查还没有在 `DefaultHost.Call` 层强制执行，短期由 provider 或调用方策略承担。
+`DefaultHost` 当前会从 `Config["rights"]` 读取字符串数组并写入 `CapabilityInstance.Rights`，同时将 `Config` 克隆到 `CapabilityInstance.Meta`。`run-iavm --cap-config <file.toml>` 已可把外部 TOML 配置注入到 `AcquireRequest.Config`，并同时用于构建本地 FS preopen 与 Network HTTP policy。
 
 ### 2.3 CallRequest
 
@@ -189,17 +189,105 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 
 返回：空 map。
 
-### 3.9 当前未接入 FS operation
+### 3.9 `fs.open`
 
-`host/fs.Provider` 已定义 `Open`、`FileHandle.Read`、`Write`、`Seek`、`Close`，但 `DefaultHost.Call` 当前尚未暴露以下 operation：
+打开文件并返回宿主句柄。
 
-- `fs.open`
-- `fs.read`
-- `fs.write`
-- `fs.seek`
-- `fs.close`
+参数：
 
-这些操作需要先明确 handle 生命周期、资源上限和 `Poll` 语义，再进入 ABI 稳定范围。
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `path` | `string` | 是 | 目标路径 |
+| `read` | `bool` | 否 | 读模式 |
+| `write` | `bool` | 否 | 写模式 |
+| `create` | `bool` | 否 | 允许创建 |
+| `trunc` | `bool` | 否 | 截断已有文件 |
+| `append` | `bool` | 否 | 追加写 |
+
+返回：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `handle` | `uint64` | 文件句柄 ID |
+
+### 3.10 `fs.read`
+
+基于句柄读取文件内容。
+
+参数：
+
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `handle` | number | 是 | 文件句柄 ID |
+| `size` | number | 是 | 期望读取字节数 |
+
+返回：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `data` | `[]byte` | 读取到的数据 |
+| `n` | `int64` | 实际读取字节数 |
+| `eof` | `bool` | 是否到达 EOF |
+
+### 3.11 `fs.write`
+
+基于句柄写入文件内容。
+
+参数：
+
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `handle` | number | 是 | 文件句柄 ID |
+| `data` | `[]byte` 或 `string` | 是 | 写入内容 |
+
+返回：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `n` | `int64` | 实际写入字节数 |
+
+### 3.12 `fs.seek`
+
+调整文件句柄偏移。
+
+参数：
+
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `handle` | number | 是 | 文件句柄 ID |
+| `offset` | number | 是 | 偏移量 |
+| `whence` | number | 否 | 对齐基准，默认 0 |
+
+返回：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `offset` | `int64` | 调整后的绝对偏移 |
+
+### 3.13 `fs.close`
+
+关闭并释放文件句柄。
+
+参数：
+
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `handle` | number | 是 | 文件句柄 ID |
+
+返回：空 map。
+
+### 3.14 `host.poll` / `OpHostPoll`
+
+`OpHostPoll` 当前已进入最小稳定范围：runtime 会从栈上弹出 handle ID，调用 `Host.Poll(handleID)`，并把结果压回为对象。
+
+当前 `DefaultHost.Poll` 对已打开的文件句柄返回同步 ready 结果：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `done` | `bool` | 当前最小实现固定为 `true` |
+| `ready` | `bool` | 文件句柄已可读/可写 |
+| `handle` | `uint64` | 被轮询的句柄 ID |
+| `error` | `string` | 错误文本；无错误时为空 |
 
 ## 4. Network Capability
 
@@ -272,7 +360,7 @@ Network capability kind 为 `network`，当前 `DefaultHost` 只稳定暴露 HTT
 | `ErrCapabilityNotFound` | `DefaultHost.lookupCapability` | capability ID 未注册或已释放 |
 | `ErrProviderUnavailable` | `DefaultHost.newCapabilityInstance` / `Call` | 对应 provider 未配置 |
 | `ErrInvalidCallArgs` | 参数解析 | 缺少参数或参数类型不符合 ABI |
-| `ErrPollNotSupported` | `DefaultHost.Poll` | 当前默认宿主不支持 poll |
+| `ErrPollNotSupported` | `Host.Poll` 实现 | 某些自定义宿主不支持 poll |
 | `ErrCapabilityUnsupported` | capability 或 operation 分发 | capability kind 或 operation 未支持 |
 
 runtime 可以先将这些错误包装成运行时错误；后续若接入 ialang 结构化异常，应保留原始错误分类。
@@ -297,7 +385,38 @@ runtime 可以先将这些错误包装成运行时错误；后续若接入 ialan
 补充约定：
 
 - `OpImportCap` 的 capability kind 常量可来自模块级常量池或函数级常量池，与 `OpConst` 的常量解析规则保持一致。
+- `OpImportCap` 会把模块 `CapabilityDecl.Config` 原样传入 `AcquireRequest.Config`。
 - `OpHostCall` 会绑定到最近一次成功执行 `OpImportCap` 导入的 capability。
+
+## 5.2 `run-iavm --cap-config` TOML 约定
+
+当前 CLI 已支持以下最小 TOML 结构：
+
+```toml
+[fs]
+rights = ["read", "write"]
+
+[[fs.preopens]]
+virtual_path = "/workspace"
+real_path = "C:/tmp/workspace"
+read_only = false
+
+[network]
+rights = ["http"]
+allow_hosts = ["example.com"]
+allow_schemes = ["https"]
+allow_ports = [443]
+allow_cidrs = ["10.0.0.0/8"]
+max_connections = 8
+max_inflight_request = 8
+max_bytes_per_request = 1048576
+```
+
+说明：
+
+- `fs.preopens` 会用于构造 `host/fs.LocalFSProvider`。
+- 未配置 `fs.preopens` 时，`run-iavm` 默认仍使用内存文件系统 provider。
+- `network` 配置会映射到 `host/network.Policy`，用于 `network.http_fetch` 请求校验。
 
 ## 6. 版本与演进规则
 

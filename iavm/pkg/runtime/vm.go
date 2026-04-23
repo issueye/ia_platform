@@ -134,3 +134,20 @@ func (vm *VM) resolveStringConstant(fn *module.Function, index uint32) (string, 
 	text, ok := value.(string)
 	return text, ok
 }
+
+func (vm *VM) capabilityConfig(kind module.CapabilityKind) map[string]any {
+	for _, capability := range vm.mod.Capabilities {
+		if capability.Kind != kind {
+			continue
+		}
+		if len(capability.Config) == 0 {
+			return nil
+		}
+		result := make(map[string]any, len(capability.Config))
+		for key, value := range capability.Config {
+			result[key] = value
+		}
+		return result
+	}
+	return nil
+}

@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"errors"
+	hostfs "iacommon/pkg/host/fs"
+	hostnet "iacommon/pkg/host/network"
 	bc "iacommon/pkg/ialang/bytecode"
 	moduleapi "iacommon/pkg/ialang/module"
 	"iacommon/pkg/ialang/packagefile"
@@ -180,6 +182,90 @@ func TestParseCLIArgsInspectIavmVerifyOptions(t *testing.T) {
 	}
 	if len(cmd.allowedCapabilities) != 1 || cmd.allowedCapabilities[0] != module.CapabilityFS {
 		t.Fatalf("allowedCapabilities = %#v, want [fs]", cmd.allowedCapabilities)
+	}
+}
+
+func TestParseCLIArgsRunIavmCapConfig(t *testing.T) {
+	cmd, err := parseCLIArgs([]string{
+		"ialang", "run-iavm", "app.iavm",
+		"--profile", "sandbox",
+		"--cap-config", "caps.toml",
+	})
+	if err != nil {
+		t.Fatalf("parse run-iavm cap config unexpected error: %v", err)
+	}
+	if cmd.capConfig != "caps.toml" {
+		t.Fatalf("capConfig = %q, want caps.toml", cmd.capConfig)
+	}
+}
+
+func TestParseCLIArgsRunIavmCapConfigRequiresValue(t *testing.T) {
+	_, err := parseCLIArgs([]string{"ialang", "run-iavm", "app.iavm", "--cap-config"})
+	if err == nil {
+		t.Fatal("expected missing cap-config value error")
+	}
+	if !strings.Contains(err.Error(), "--cap-config") {
+		t.Fatalf("error = %v, want --cap-config mention", err)
+	}
+}
+
+func TestLoadCapabilityConfigAndBuildHost(t *testing.T) {
+	dir := t.TempDir()
+	workspaceDir := filepath.Join(dir, "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace error: %v", err)
+	}
+
+	configPath := filepath.Join(dir, "caps.toml")
+	configText := " [fs]\nrights = [\"read\"]\n\n[[fs.preopens]]\nvirtual_path = \"/workspace\"\nreal_path = \"" + filepath.ToSlash(workspaceDir) + "\"\nread_only = true\n\n[network]\nrights = [\"http\"]\nallow_hosts = [\"example.com\"]\nallow_schemes = [\"https\"]\nallow_ports = [443]\nmax_bytes_per_request = 1024\n"
+	if err := os.WriteFile(configPath, []byte(configText), 0o644); err != nil {
+		t.Fatalf("write cap config error: %v", err)
+	}
+
+	cfg, err := loadCapabilityConfig(configPath)
+	if err != nil {
+		t.Fatalf("loadCapabilityConfig unexpected error: %v", err)
+	}
+
+	mod := &module.Module{
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+			{Kind: module.CapabilityNetwork},
+		},
+	}
+	applyCapabilityConfig(mod, cfg)
+
+	fsConfig := mod.Capabilities[0].Config
+	if got := fsConfig["rights"]; got == nil {
+		t.Fatal("expected fs rights config to be applied")
+	}
+	preopens, ok := fsConfig["preopens"].([]any)
+	if !ok || len(preopens) != 1 {
+		t.Fatalf("expected fs preopens config, got %#v", fsConfig["preopens"])
+	}
+
+	host, err := buildRunIavmHost(cfg)
+	if err != nil {
+		t.Fatalf("buildRunIavmHost unexpected error: %v", err)
+	}
+
+	localFS, ok := host.FS.(*hostfs.LocalFSProvider)
+	if !ok {
+		t.Fatalf("host FS = %T, want *hostfs.LocalFSProvider", host.FS)
+	}
+	if localFS.Mapper == nil {
+		t.Fatal("expected LocalFSProvider mapper to be configured")
+	}
+
+	httpProvider, ok := host.Network.(*hostnet.HTTPProvider)
+	if !ok {
+		t.Fatalf("host Network = %T, want *hostnet.HTTPProvider", host.Network)
+	}
+	if len(httpProvider.Policy.AllowHosts) != 1 || httpProvider.Policy.AllowHosts[0] != "example.com" {
+		t.Fatalf("allow hosts = %#v, want [example.com]", httpProvider.Policy.AllowHosts)
+	}
+	if httpProvider.Policy.MaxBytesPerRequest != 1024 {
+		t.Fatalf("max bytes = %d, want 1024", httpProvider.Policy.MaxBytesPerRequest)
 	}
 }
 
@@ -588,6 +674,67 @@ func TestRunCLIVerifyIavmHostOperationRequiresDeclaredCapability(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "host operation \"fs.read_file\" requires capability \"fs\"") {
 		t.Fatalf("stderr = %q, want host operation capability mismatch", stderr.String())
+	}
+}
+
+func TestRunCLIRunIavmCapConfigEnablesLocalFSPreopen(t *testing.T) {
+	dir := t.TempDir()
+	workspaceDir := filepath.Join(dir, "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, "data.txt"), []byte("hello from preopen"), 0o644); err != nil {
+		t.Fatalf("write data file error: %v", err)
+	}
+
+	modulePath := filepath.Join(dir, "fs-read.iavm")
+	configPath := filepath.Join(dir, "caps.toml")
+	configText := "[fs]\nrights = [\"read\"]\n\n[[fs.preopens]]\nvirtual_path = \"/workspace\"\nreal_path = \"" + filepath.ToSlash(workspaceDir) + "\"\nread_only = true\n"
+	if err := os.WriteFile(configPath, []byte(configText), 0o644); err != nil {
+		t.Fatalf("write cap config error: %v", err)
+	}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs", "path", "/workspace/data.txt", "fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 3},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "run-iavm", modulePath, "--cap-config", configPath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI run-iavm cap config code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
 }
 

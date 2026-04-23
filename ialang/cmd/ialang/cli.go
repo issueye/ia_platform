@@ -10,25 +10,26 @@ import (
 )
 
 type cliCommand struct {
-	name                string
-	file                string
-	out                 string
-	args                []string
-	strict              bool
-	verbose             bool
-	verify              bool
-	profile             string
-	maxFunctions        int
-	maxConstants        int
-	maxCodeSize         int
-	maxLocals           int
-	maxStack            int
-	allowedCapabilities []module.CapabilityKind
+	name                   string
+	file                   string
+	out                    string
+	args                   []string
+	capConfig              string
+	strict                 bool
+	verbose                bool
+	verify                 bool
+	profile                string
+	maxFunctions           int
+	maxConstants           int
+	maxCodeSize            int
+	maxLocals              int
+	maxStack               int
+	allowedCapabilities    []module.CapabilityKind
 	capabilityAllowlistSet bool
-	helpShown           bool
+	helpShown              bool
 }
 
-const usageText = "usage:\n  ialang run <file> [args...]\n  ialang build <entry.ia> [-o output.iapkg]\n  ialang run-pkg <file.iapkg> [args...]\n  ialang build-bin <entry.ia> [-o output.exe]\n  ialang build-iavm <entry.ia> [-o output.iavm]\n  ialang verify-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang inspect-iavm <file.iavm> [--verbose] [--verify] [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang run-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang init [dir]\n  ialang check [entry.ia|project-dir]\n  ialang fmt [path]  (path can be a file or directory, defaults to current directory)"
+const usageText = "usage:\n  ialang run <file> [args...]\n  ialang build <entry.ia> [-o output.iapkg]\n  ialang run-pkg <file.iapkg> [args...]\n  ialang build-bin <entry.ia> [-o output.exe]\n  ialang build-iavm <entry.ia> [-o output.iavm]\n  ialang verify-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang inspect-iavm <file.iavm> [--verbose] [--verify] [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang run-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network] [--cap-config file.toml]\n  ialang init [dir]\n  ialang check [entry.ia|project-dir]\n  ialang fmt [path]  (path can be a file or directory, defaults to current directory)"
 
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	cmd, err := parseCLIArgs(args)
@@ -369,9 +370,34 @@ func parseIavmVerifyOption(command string, cmd *cliCommand, option string, args 
 		cmd.capabilityAllowlistSet = true
 		cmd.allowedCapabilities = append(cmd.allowedCapabilities, capability)
 		return true, nil
+	case "--cap-config":
+		if command != "run-iavm" {
+			return false, nil
+		}
+		value, err := parseStringOption(command, option, args, index)
+		if err != nil {
+			return false, err
+		}
+		if cmd.capConfig != "" {
+			return false, fmt.Errorf("capability config provided multiple times")
+		}
+		cmd.capConfig = value
+		return true, nil
 	default:
 		return false, nil
 	}
+}
+
+func parseStringOption(command, option string, args []string, index *int) (string, error) {
+	if *index+1 >= len(args) {
+		return "", fmt.Errorf("%s requires a value for %s", command, option)
+	}
+	*index++
+	value := strings.TrimSpace(args[*index])
+	if value == "" {
+		return "", fmt.Errorf("%s requires a non-empty value for %s", command, option)
+	}
+	return value, nil
 }
 
 func parsePositiveIntOption(command, option string, args []string, index *int) (int, error) {

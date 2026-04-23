@@ -196,6 +196,24 @@ For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.5-host-abi-control
 
 ---
 
+## 0.0.6 Semantic Expansion（已完成）
+
+`0.0.6` 已完成从“平台契约收敛”到“语义扩展”的第一轮推进：
+
+- `extends` / `super()` / `super.method()` 已进入 IAVM lowering、runtime 与 CLI 回归矩阵
+- `DefaultHost` 已支持 `fs.open/read/write/seek/close` handle 生命周期
+- `OpHostPoll` 已消费栈上 handle，并返回最小同步 ready 结果
+- `run-iavm --cap-config <file.toml>` 已可把 TOML capability 配置同时映射到：
+  - module capability `AcquireRequest.Config`
+  - 本地 FS preopen
+  - Network HTTP policy
+
+Release delivery note: `../docs/plans/2026-04-23-iavm-0.0.6-delivery-note.md`
+
+For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.6-semantic-expansion-plan.md`.
+
+---
+
 ## Documentation
 
 - Usage guide: [docs/usage-guide.md](docs/usage-guide.md)

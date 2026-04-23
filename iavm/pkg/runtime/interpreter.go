@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iacommon/pkg/host/api"
 	"iavm/pkg/core"
+	"iavm/pkg/module"
 )
 
 const (
@@ -373,9 +374,10 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if !ok || capKind == "" {
 			return fmt.Errorf("capability import kind must reference a string constant")
 		}
+		config := vm.capabilityConfig(module.CapabilityKind(capKind))
 		cap, err := vm.options.Host.AcquireCapability(context.Background(), api.AcquireRequest{
 			Kind:   api.CapabilityKind(capKind),
-			Config: map[string]any{},
+			Config: config,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to acquire capability: %w", err)

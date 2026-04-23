@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"io"
 
-	"iacommon/pkg/host/api"
-	hostfs "iacommon/pkg/host/fs"
-	hostnet "iacommon/pkg/host/network"
 	"iavm/pkg/runtime"
 )
 
@@ -19,10 +16,15 @@ func executeRunIavmCommand(cmd cliCommand, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	cfg, err := loadCapabilityConfig(cmd.capConfig)
+	if err != nil {
+		return err
+	}
+	applyCapabilityConfig(mod, cfg)
 
-	host := &api.DefaultHost{
-		FS:      &hostfs.MemFSProvider{},
-		Network: &hostnet.HTTPProvider{},
+	host, err := buildRunIavmHost(cfg)
+	if err != nil {
+		return err
 	}
 
 	vm, err := runtime.New(mod, runtime.Options{
