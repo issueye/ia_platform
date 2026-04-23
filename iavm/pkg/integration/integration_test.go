@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"iacommon/pkg/host/api"
+	hostfs "iacommon/pkg/host/fs"
 	"iacommon/pkg/ialang/bytecode"
 	compiler "ialang/pkg/lang/compiler"
 	frontend "ialang/pkg/lang/frontend"
@@ -330,6 +331,127 @@ func TestFullPipeline_ClassInheritanceExample(t *testing.T) {
 	}
 	if err := vm.Run(); err != nil {
 		t.Fatalf("VM.Run failed: %v", err)
+	}
+}
+
+func TestFullPipeline_FSHandleReadAndPoll(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "handle.txt"), []byte("hello handles"), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	mapper, err := hostfs.NewPreopenPathMapper([]hostfs.Preopen{{
+		VirtualPath: "/workspace",
+		RealPath:    root,
+	}})
+	if err != nil {
+		t.Fatalf("NewPreopenPathMapper failed: %v", err)
+	}
+	host := &api.DefaultHost{
+		FS: &hostfs.LocalFSProvider{Mapper: mapper},
+	}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Constants: []any{
+			"fs",
+			"path", "/workspace/handle.txt",
+			"read", true,
+			"fs.open",
+			"handle",
+			"size", int64(5),
+			"fs.read",
+			"ready",
+			"fs.close",
+			"data",
+		},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Locals: []core.ValueKind{
+					core.ValueObjectRef,
+					core.ValueObjectRef,
+				},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpConst, A: 3},
+					{Op: core.OpConst, A: 4},
+					{Op: core.OpMakeObject, A: 2},
+					{Op: core.OpConst, A: 5},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpStoreLocal, A: 0},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 6},
+					{Op: core.OpHostPoll},
+					{Op: core.OpGetProp, A: 10},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 6},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 6},
+					{Op: core.OpConst, A: 7},
+					{Op: core.OpConst, A: 8},
+					{Op: core.OpMakeObject, A: 2},
+					{Op: core.OpConst, A: 9},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpStoreLocal, A: 1},
+					{Op: core.OpConst, A: 6},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 6},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 11},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpLoadLocal, A: 1},
+					{Op: core.OpGetProp, A: 12},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	result, err := binary.VerifyModule(mod, binary.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("VerifyModule failed: %v", err)
+	}
+	if !result.Valid {
+		t.Fatal("module not valid")
+	}
+
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule failed: %v", err)
+	}
+	decoded, err := binary.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("DecodeModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(decoded, runtime.Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("VM.Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueBytes || string(val.Raw.([]byte)) != "hello" {
+		t.Fatalf("unexpected read result: %#v", val)
 	}
 }
 
