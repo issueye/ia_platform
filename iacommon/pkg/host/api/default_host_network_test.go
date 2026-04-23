@@ -839,3 +839,64 @@ func TestDefaultHostExcludesConfiguredHTTPStatusClassFromRetry(t *testing.T) {
 		t.Fatalf("unexpected status result: %#v", result.Value["status"])
 	}
 }
+
+func TestDefaultHostExcludesConfiguredHTTPMethodsFromRetry(t *testing.T) {
+	tests := []struct {
+		name   string
+		config map[string]any
+		method string
+	}{
+		{
+			name: "excluded_method_overrides_explicit_allowlist",
+			config: map[string]any{
+				"retry_http_statuses":         []any{http.StatusServiceUnavailable},
+				"retry_http_methods":          []any{http.MethodGet},
+				"retry_http_excluded_methods": []any{http.MethodGet},
+			},
+			method: http.MethodGet,
+		},
+		{
+			name: "excluded_method_overrides_default_safe_methods",
+			config: map[string]any{
+				"retry_http_status_classes":       []any{5},
+				"retry_http_default_safe_methods": true,
+				"retry_http_excluded_methods":     []any{http.MethodDelete},
+			},
+			method: http.MethodDelete,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte("retry later"))
+			}))
+			defer server.Close()
+
+			host := &DefaultHost{Network: &hostnet.HTTPProvider{Policy: hostnet.Policy{AllowSchemes: []string{"http", "https"}}}}
+			capability, err := host.AcquireCapability(context.Background(), AcquireRequest{
+				Kind:   CapabilityNetwork,
+				Config: tt.config,
+			})
+			if err != nil {
+				t.Fatalf("acquire network capability: %v", err)
+			}
+
+			result, err := host.Call(context.Background(), CallRequest{
+				CapabilityID: capability.ID,
+				Operation:    "network.http_fetch",
+				Args: map[string]any{
+					"url":    server.URL,
+					"method": tt.method,
+				},
+			})
+			if err != nil {
+				t.Fatalf("expected excluded method to remain raw response, got %v", err)
+			}
+			if status, ok := result.Value["status"].(int); !ok || status != http.StatusServiceUnavailable {
+				t.Fatalf("unexpected status result: %#v", result.Value["status"])
+			}
+		})
+	}
+}

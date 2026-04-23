@@ -509,8 +509,8 @@ func markTransientNetworkError(err error) error {
 }
 
 func shouldRetryHTTPStatus(meta map[string]any, status int, method string) bool {
+	normalizedMethod := normalizeHTTPMethod(method)
 	if methods, ok := readStringSliceAny(meta, "retry_http_methods", "retryHTTPMethods"); ok {
-		normalizedMethod := normalizeHTTPMethod(method)
 		matched := false
 		for _, candidate := range methods {
 			if normalizeHTTPMethod(candidate) == normalizedMethod {
@@ -524,6 +524,13 @@ func shouldRetryHTTPStatus(meta map[string]any, status int, method string) bool 
 	} else if readBoolAny(meta, "retry_http_default_safe_methods", "retryHTTPDefaultSafeMethods") {
 		if !isDefaultRetrySafeHTTPMethod(method) {
 			return false
+		}
+	}
+	if excludedMethods, ok := readStringSliceAny(meta, "retry_http_excluded_methods", "retryHTTPExcludedMethods"); ok {
+		for _, candidate := range excludedMethods {
+			if normalizeHTTPMethod(candidate) == normalizedMethod {
+				return false
+			}
 		}
 	}
 	excludedStatuses, _ := readIntList(meta, "retry_http_excluded_statuses", "retryHTTPExcludedStatuses")
