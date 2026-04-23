@@ -292,8 +292,11 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - `Options.MaxDuration` 可为整个 settled 执行过程建立统一 deadline
 - `Options.HostTimeout` 当前作用于单次 `AcquireCapability` / `Call` / `Poll`
 - `Options.WaitTimeout` 当前作用于单次 `Wait(handle)`
+- `Options.RetryCount` / `Options.RetryBackoff` 当前作用于 `poll/wait` 的超时重试
 - capability `Config.host_timeout_ms` / `Config.wait_timeout_ms` 可覆盖默认 operation timeout
+- capability `Config.retry_count` / `Config.retry_backoff_ms` 可覆盖默认 retry/backoff
 - pending promise 会保留触发时的 capability timeout profile，用于后续恢复路径
+- pending promise 也会保留触发时的 retry/backoff profile，用于后续恢复路径
 - 当前 wakeup 模型仍是最小实现：宿主只需保证 wait 最终返回 done 或 context 结束，不要求主动事件推送协议
 
 当前 Promise resolve 后的 poll 结果对象包含以下字段：
@@ -315,6 +318,7 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - 当 context 结束时，runtime 当前返回标准 context 错误，如 `context deadline exceeded`
 - operation timeout 与总 deadline 并存时，先到期者生效
 - capability profile 优先级高于默认 timeout option
+- retry/backoff 目前仅覆盖可安全重试的 `poll/wait`，不自动重试 `host.call`
 
 ## 4. Network Capability
 
