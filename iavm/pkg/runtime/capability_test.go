@@ -877,6 +877,80 @@ func TestCapability_HostCallExcludesConfiguredHTTPStatusFromRetry(t *testing.T) 
 	}
 }
 
+func TestCapability_HostCallExcludesConfiguredHTTPStatusClassFromRetry(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("retry later"))
+	}))
+	defer server.Close()
+
+	host := &api.DefaultHost{
+		Network: &hostnet.HTTPProvider{
+			Policy: hostnet.Policy{AllowSchemes: []string{"http", "https"}},
+		},
+	}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"retry_http_status_classes":          []any{5},
+					"retry_http_excluded_status_classes": []any{5},
+					"retry_http_default_safe_methods":    true,
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"network", "url", server.URL, "network.http_fetch", "status"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 3},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpGetProp, A: 4},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		RetryCount:   1,
+		RetryBackoff: time.Millisecond,
+		RetryCallOps: []string{"network.http_fetch"},
+	})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("expected 1 http attempt, got %d", attempts)
+	}
+
+	result, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected http status result on stack")
+	}
+	if result.Kind != core.ValueI64 || result.Raw.(int64) != http.StatusBadGateway {
+		t.Fatalf("unexpected excluded class result: %#v", result)
+	}
+}
+
 func TestCapability_HostCallDoesNotRetryPlainErrorEvenIfAllowlisted(t *testing.T) {
 	host := newMockHost()
 	host.callErr = errors.New("permanent host.call failure")
