@@ -501,6 +501,7 @@ runtime 可以先将这些错误包装成运行时错误；后续若接入 ialan
 - 宿主若希望某个错误被 runtime 视为“可安全重试”，可通过 `api.MarkRetryable(err)` 包装后返回
 - runtime 可通过 `api.IsRetryableError(err)` 识别该标记，并把它与 timeout retry 规则统一处理
 - `MarkRetryable` 只表达“该错误类别允许重试”，不自动绕过 `host.call` 的 allowlist 约束
+- `DefaultHost` 当前会对网络 I/O 路径上的瞬时 `net.Error`（如 timeout / temporary）自动应用该标记；参数校验、policy 拒绝、capability 不存在等错误仍保持非 retryable
 
 ## 5.1 IAVM `OpHostCall` 参数约定
 
