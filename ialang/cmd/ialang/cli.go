@@ -16,6 +16,7 @@ type cliCommand struct {
 	args                []string
 	strict              bool
 	verbose             bool
+	verify              bool
 	profile             string
 	maxFunctions        int
 	maxConstants        int
@@ -26,7 +27,7 @@ type cliCommand struct {
 	helpShown           bool
 }
 
-const usageText = "usage:\n  ialang run <file> [args...]\n  ialang build <entry.ia> [-o output.iapkg]\n  ialang run-pkg <file.iapkg> [args...]\n  ialang build-bin <entry.ia> [-o output.exe]\n  ialang build-iavm <entry.ia> [-o output.iavm]\n  ialang verify-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang inspect-iavm <file.iavm> [--verbose]\n  ialang run-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang init [dir]\n  ialang check [entry.ia|project-dir]\n  ialang fmt [path]  (path can be a file or directory, defaults to current directory)"
+const usageText = "usage:\n  ialang run <file> [args...]\n  ialang build <entry.ia> [-o output.iapkg]\n  ialang run-pkg <file.iapkg> [args...]\n  ialang build-bin <entry.ia> [-o output.exe]\n  ialang build-iavm <entry.ia> [-o output.iavm]\n  ialang verify-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang inspect-iavm <file.iavm> [--verbose] [--verify] [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang run-iavm <file.iavm> [--profile default|strict|sandbox] [--strict] [--max-functions N] [--max-constants N] [--max-code-size N] [--max-locals N] [--max-stack N] [--allow-capability fs|network]\n  ialang init [dir]\n  ialang check [entry.ia|project-dir]\n  ialang fmt [path]  (path can be a file or directory, defaults to current directory)"
 
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	cmd, err := parseCLIArgs(args)
@@ -95,7 +96,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	case "inspect-iavm":
-		if err := executeInspectIavmCommand(cmd.file, cmd.verbose, stdout, stderr); err != nil {
+		if err := executeInspectIavmCommand(cmd, stdout, stderr); err != nil {
 			fmt.Fprintln(stderr, err.Error())
 			return 1
 		}
@@ -287,62 +288,80 @@ func parseIavmVerifyCLIArgs(command string, args []string) (cliCommand, error) {
 
 	for i := 0; i < len(remaining); i++ {
 		tok := remaining[i]
-		switch tok {
-		case "--profile":
-			profile, err := parseIavmProfileOption(command, tok, remaining, &i)
-			if err != nil {
-				return cliCommand{}, err
-			}
-			if cmd.profile != "" {
-				return cliCommand{}, fmt.Errorf("profile provided multiple times")
-			}
-			cmd.profile = profile
-		case "--strict":
-			if cmd.strict {
-				return cliCommand{}, fmt.Errorf("strict mode provided multiple times")
-			}
-			cmd.strict = true
-		case "--max-functions":
-			value, err := parsePositiveIntOption(command, tok, remaining, &i)
-			if err != nil {
-				return cliCommand{}, err
-			}
-			cmd.maxFunctions = value
-		case "--max-constants":
-			value, err := parsePositiveIntOption(command, tok, remaining, &i)
-			if err != nil {
-				return cliCommand{}, err
-			}
-			cmd.maxConstants = value
-		case "--max-code-size":
-			value, err := parsePositiveIntOption(command, tok, remaining, &i)
-			if err != nil {
-				return cliCommand{}, err
-			}
-			cmd.maxCodeSize = value
-		case "--max-locals":
-			value, err := parsePositiveIntOption(command, tok, remaining, &i)
-			if err != nil {
-				return cliCommand{}, err
-			}
-			cmd.maxLocals = value
-		case "--max-stack":
-			value, err := parsePositiveIntOption(command, tok, remaining, &i)
-			if err != nil {
-				return cliCommand{}, err
-			}
-			cmd.maxStack = value
-		case "--allow-capability":
-			capability, err := parseCapabilityOption(command, tok, remaining, &i)
-			if err != nil {
-				return cliCommand{}, err
-			}
-			cmd.allowedCapabilities = append(cmd.allowedCapabilities, capability)
-		default:
+		handled, err := parseIavmVerifyOption(command, &cmd, tok, remaining, &i)
+		if err != nil {
+			return cliCommand{}, err
+		}
+		if !handled {
 			return cliCommand{}, fmt.Errorf("unknown %s option: %s", command, tok)
 		}
 	}
 	return cmd, nil
+}
+
+func parseIavmVerifyOption(command string, cmd *cliCommand, option string, args []string, index *int) (bool, error) {
+	switch option {
+	case "--profile":
+		profile, err := parseIavmProfileOption(command, option, args, index)
+		if err != nil {
+			return false, err
+		}
+		if cmd.profile != "" {
+			return false, fmt.Errorf("profile provided multiple times")
+		}
+		cmd.profile = profile
+		return true, nil
+	case "--strict":
+		if cmd.strict {
+			return false, fmt.Errorf("strict mode provided multiple times")
+		}
+		cmd.strict = true
+		return true, nil
+	case "--max-functions":
+		value, err := parsePositiveIntOption(command, option, args, index)
+		if err != nil {
+			return false, err
+		}
+		cmd.maxFunctions = value
+		return true, nil
+	case "--max-constants":
+		value, err := parsePositiveIntOption(command, option, args, index)
+		if err != nil {
+			return false, err
+		}
+		cmd.maxConstants = value
+		return true, nil
+	case "--max-code-size":
+		value, err := parsePositiveIntOption(command, option, args, index)
+		if err != nil {
+			return false, err
+		}
+		cmd.maxCodeSize = value
+		return true, nil
+	case "--max-locals":
+		value, err := parsePositiveIntOption(command, option, args, index)
+		if err != nil {
+			return false, err
+		}
+		cmd.maxLocals = value
+		return true, nil
+	case "--max-stack":
+		value, err := parsePositiveIntOption(command, option, args, index)
+		if err != nil {
+			return false, err
+		}
+		cmd.maxStack = value
+		return true, nil
+	case "--allow-capability":
+		capability, err := parseCapabilityOption(command, option, args, index)
+		if err != nil {
+			return false, err
+		}
+		cmd.allowedCapabilities = append(cmd.allowedCapabilities, capability)
+		return true, nil
+	default:
+		return false, nil
+	}
 }
 
 func parsePositiveIntOption(command, option string, args []string, index *int) (int, error) {
@@ -392,15 +411,28 @@ func parseInspectIavmCLIArgs(args []string) (cliCommand, error) {
 	cmd := cliCommand{name: "inspect-iavm", file: args[2]}
 	remaining := args[3:]
 
-	for _, tok := range remaining {
+	for i := 0; i < len(remaining); i++ {
+		tok := remaining[i]
 		switch tok {
 		case "--verbose":
 			if cmd.verbose {
 				return cliCommand{}, fmt.Errorf("verbose mode provided multiple times")
 			}
 			cmd.verbose = true
+		case "--verify":
+			if cmd.verify {
+				return cliCommand{}, fmt.Errorf("verify mode provided multiple times")
+			}
+			cmd.verify = true
 		default:
-			return cliCommand{}, fmt.Errorf("unknown inspect-iavm option: %s", tok)
+			handled, err := parseIavmVerifyOption("inspect-iavm", &cmd, tok, remaining, &i)
+			if err != nil {
+				return cliCommand{}, err
+			}
+			if !handled {
+				return cliCommand{}, fmt.Errorf("unknown inspect-iavm option: %s", tok)
+			}
+			cmd.verify = true
 		}
 	}
 	return cmd, nil

@@ -36,10 +36,14 @@ func TestParseCLIArgs(t *testing.T) {
 		{name: "valid fmt", args: []string{"ialang", "fmt", "examples/hello.ia"}, wantErr: false},
 		{name: "valid verify-iavm", args: []string{"ialang", "verify-iavm", "app.iavm"}, wantErr: false},
 		{name: "valid verify-iavm strict", args: []string{"ialang", "verify-iavm", "app.iavm", "--strict"}, wantErr: false},
+		{name: "valid verify-iavm with profile", args: []string{"ialang", "verify-iavm", "app.iavm", "--profile", "sandbox"}, wantErr: false},
 		{name: "valid verify-iavm with limits", args: []string{"ialang", "verify-iavm", "app.iavm", "--max-functions", "2", "--max-constants", "3", "--max-code-size", "4", "--max-locals", "5", "--max-stack", "6", "--allow-capability", "fs"}, wantErr: false},
 		{name: "valid inspect-iavm", args: []string{"ialang", "inspect-iavm", "app.iavm"}, wantErr: false},
 		{name: "valid inspect-iavm verbose", args: []string{"ialang", "inspect-iavm", "app.iavm", "--verbose"}, wantErr: false},
+		{name: "valid inspect-iavm verify", args: []string{"ialang", "inspect-iavm", "app.iavm", "--verify"}, wantErr: false},
+		{name: "valid inspect-iavm verify with profile", args: []string{"ialang", "inspect-iavm", "app.iavm", "--profile", "sandbox"}, wantErr: false},
 		{name: "valid run-iavm", args: []string{"ialang", "run-iavm", "app.iavm"}, wantErr: false},
+		{name: "valid run-iavm profile", args: []string{"ialang", "run-iavm", "app.iavm", "--profile", "strict"}, wantErr: false},
 		{name: "valid run-iavm strict capability", args: []string{"ialang", "run-iavm", "app.iavm", "--strict", "--allow-capability", "network"}, wantErr: false},
 		{name: "missing command", args: []string{"ialang"}, wantErr: true},
 		{name: "unsupported command", args: []string{"ialang", "test"}, wantErr: true},
@@ -60,13 +64,21 @@ func TestParseCLIArgs(t *testing.T) {
 		{name: "verify-iavm missing file", args: []string{"ialang", "verify-iavm"}, wantErr: true},
 		{name: "verify-iavm unknown option", args: []string{"ialang", "verify-iavm", "app.iavm", "--bad"}, wantErr: true},
 		{name: "verify-iavm duplicate strict", args: []string{"ialang", "verify-iavm", "app.iavm", "--strict", "--strict"}, wantErr: true},
+		{name: "verify-iavm missing profile value", args: []string{"ialang", "verify-iavm", "app.iavm", "--profile"}, wantErr: true},
+		{name: "verify-iavm invalid profile", args: []string{"ialang", "verify-iavm", "app.iavm", "--profile", "unknown"}, wantErr: true},
+		{name: "verify-iavm duplicate profile", args: []string{"ialang", "verify-iavm", "app.iavm", "--profile", "strict", "--profile", "sandbox"}, wantErr: true},
 		{name: "verify-iavm missing max-functions value", args: []string{"ialang", "verify-iavm", "app.iavm", "--max-functions"}, wantErr: true},
 		{name: "verify-iavm invalid max-functions value", args: []string{"ialang", "verify-iavm", "app.iavm", "--max-functions", "0"}, wantErr: true},
 		{name: "verify-iavm invalid capability", args: []string{"ialang", "verify-iavm", "app.iavm", "--allow-capability", "gpu"}, wantErr: true},
 		{name: "inspect-iavm missing file", args: []string{"ialang", "inspect-iavm"}, wantErr: true},
 		{name: "inspect-iavm unknown option", args: []string{"ialang", "inspect-iavm", "app.iavm", "--bad"}, wantErr: true},
 		{name: "inspect-iavm duplicate verbose", args: []string{"ialang", "inspect-iavm", "app.iavm", "--verbose", "--verbose"}, wantErr: true},
+		{name: "inspect-iavm duplicate verify", args: []string{"ialang", "inspect-iavm", "app.iavm", "--verify", "--verify"}, wantErr: true},
+		{name: "inspect-iavm missing profile value", args: []string{"ialang", "inspect-iavm", "app.iavm", "--profile"}, wantErr: true},
+		{name: "inspect-iavm invalid profile", args: []string{"ialang", "inspect-iavm", "app.iavm", "--profile", "unknown"}, wantErr: true},
+		{name: "inspect-iavm invalid capability", args: []string{"ialang", "inspect-iavm", "app.iavm", "--allow-capability", "gpu"}, wantErr: true},
 		{name: "run-iavm missing file", args: []string{"ialang", "run-iavm"}, wantErr: true},
+		{name: "run-iavm invalid profile", args: []string{"ialang", "run-iavm", "app.iavm", "--profile", "unknown"}, wantErr: true},
 		{name: "run-iavm missing max-stack value", args: []string{"ialang", "run-iavm", "app.iavm", "--max-stack"}, wantErr: true},
 		{name: "run-iavm invalid max-stack value", args: []string{"ialang", "run-iavm", "app.iavm", "--max-stack", "-1"}, wantErr: true},
 		{name: "run-iavm invalid capability", args: []string{"ialang", "run-iavm", "app.iavm", "--allow-capability", "gpu"}, wantErr: true},
@@ -112,6 +124,7 @@ func TestParseCLIArgsRunAndRunPkgScriptArgs(t *testing.T) {
 func TestParseCLIArgsIavmVerifierOptions(t *testing.T) {
 	cmd, err := parseCLIArgs([]string{
 		"ialang", "verify-iavm", "app.iavm",
+		"--profile", "sandbox",
 		"--strict",
 		"--max-functions", "2",
 		"--max-constants", "3",
@@ -124,6 +137,9 @@ func TestParseCLIArgsIavmVerifierOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse verify-iavm options unexpected error: %v", err)
 	}
+	if cmd.profile != "sandbox" {
+		t.Fatalf("profile = %q, want sandbox", cmd.profile)
+	}
 	if !cmd.strict {
 		t.Fatal("strict = false, want true")
 	}
@@ -132,6 +148,34 @@ func TestParseCLIArgsIavmVerifierOptions(t *testing.T) {
 	}
 	if len(cmd.allowedCapabilities) != 2 || cmd.allowedCapabilities[0] != module.CapabilityFS || cmd.allowedCapabilities[1] != module.CapabilityNetwork {
 		t.Fatalf("allowedCapabilities = %#v, want [fs network]", cmd.allowedCapabilities)
+	}
+}
+
+func TestParseCLIArgsInspectIavmVerifyOptions(t *testing.T) {
+	cmd, err := parseCLIArgs([]string{
+		"ialang", "inspect-iavm", "app.iavm",
+		"--verbose",
+		"--profile", "sandbox",
+		"--max-functions", "2",
+		"--allow-capability", "fs",
+	})
+	if err != nil {
+		t.Fatalf("parse inspect-iavm options unexpected error: %v", err)
+	}
+	if !cmd.verbose {
+		t.Fatal("verbose = false, want true")
+	}
+	if !cmd.verify {
+		t.Fatal("verify = false, want true")
+	}
+	if cmd.profile != "sandbox" {
+		t.Fatalf("profile = %q, want sandbox", cmd.profile)
+	}
+	if cmd.maxFunctions != 2 {
+		t.Fatalf("maxFunctions = %d, want 2", cmd.maxFunctions)
+	}
+	if len(cmd.allowedCapabilities) != 1 || cmd.allowedCapabilities[0] != module.CapabilityFS {
+		t.Fatalf("allowedCapabilities = %#v, want [fs]", cmd.allowedCapabilities)
 	}
 }
 
@@ -287,6 +331,126 @@ func TestRunCLIVerifyIavmDecodeError(t *testing.T) {
 	}
 }
 
+func TestRunCLIVerifyIavmSandboxProfileRequiresEntry(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "sandbox-no-entry.iavm")
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "helper",
+				TypeIndex: 0,
+				Code:      []core.Instruction{{Op: core.OpReturn}},
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("runCLI verify-iavm sandbox code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "verify module error: no entry point function found") {
+		t.Fatalf("stderr = %q, want sandbox entry verification error", stderr.String())
+	}
+}
+
+func TestRunCLIVerifyIavmSandboxProfileAppliesResourceLimit(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "sandbox-large-code.iavm")
+
+	code := make([]core.Instruction, 4097)
+	for i := range code {
+		code[i] = core.Instruction{Op: core.OpNop}
+	}
+	code[len(code)-1] = core.Instruction{Op: core.OpReturn}
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:         "entry",
+				TypeIndex:    0,
+				Code:         code,
+				IsEntryPoint: true,
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	codeResult := runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if codeResult != 1 {
+		t.Fatalf("runCLI verify-iavm sandbox limit code = %d, want 1", codeResult)
+	}
+	if !strings.Contains(stderr.String(), "verify module error: function[0]: code size 4097 exceeds limit 4096") {
+		t.Fatalf("stderr = %q, want sandbox code size limit error", stderr.String())
+	}
+}
+
+func TestRunCLIVerifyIavmProfileCanBeOverriddenByExplicitLimit(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "sandbox-override.iavm")
+
+	code := make([]core.Instruction, 4097)
+	for i := range code {
+		code[i] = core.Instruction{Op: core.OpNop}
+	}
+	code[len(code)-1] = core.Instruction{Op: core.OpReturn}
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:         "entry",
+				TypeIndex:    0,
+				Code:         code,
+				IsEntryPoint: true,
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	codeResult := runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox", "--max-code-size", "4097"}, &stdout, &stderr)
+	if codeResult != 0 {
+		t.Fatalf("runCLI verify-iavm sandbox override code = %d, want 0, stderr=%q", codeResult, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "mode=sandbox") {
+		t.Fatalf("stdout = %q, want sandbox mode", stdout.String())
+	}
+}
+
 func TestRunCLIVerifyIavmLimitAndCapabilityOptions(t *testing.T) {
 	dir := t.TempDir()
 	modulePath := filepath.Join(dir, "limits.iavm")
@@ -438,6 +602,48 @@ func TestRunCLIRunIavmSuccess(t *testing.T) {
 	}
 }
 
+func TestRunCLIRunIavmSandboxProfileAppliesVerifierOptions(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "run-sandbox-limit.iavm")
+
+	code := make([]core.Instruction, 4097)
+	for i := range code {
+		code[i] = core.Instruction{Op: core.OpNop}
+	}
+	code[len(code)-1] = core.Instruction{Op: core.OpReturn}
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:         "entry",
+				TypeIndex:    0,
+				Code:         code,
+				IsEntryPoint: true,
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	codeResult := runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if codeResult != 1 {
+		t.Fatalf("runCLI run-iavm sandbox limit code = %d, want 1", codeResult)
+	}
+	if !strings.Contains(stderr.String(), "verify module error: function[0]: code size 4097 exceeds limit 4096") {
+		t.Fatalf("stderr = %q, want sandbox code size limit error", stderr.String())
+	}
+}
+
 func TestRunCLIRunIavmCapabilityDenied(t *testing.T) {
 	dir := t.TempDir()
 	modulePath := filepath.Join(dir, "run-cap-denied.iavm")
@@ -586,6 +792,119 @@ func TestRunCLIInspectIavmVerboseShowsFunctions(t *testing.T) {
 	out := stdout.String()
 	if !strings.Contains(out, "function[0]: name=<anonymous> type=0 locals=2 code=1 max_stack=2 entry=true") {
 		t.Fatalf("stdout = %q, want verbose function details", out)
+	}
+}
+
+func TestRunCLIInspectIavmVerifySuccess(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "inspect-verify.iavm")
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:         "entry",
+				TypeIndex:    0,
+				Code:         []core.Instruction{{Op: core.OpReturn}},
+				IsEntryPoint: true,
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "inspect-iavm", modulePath, "--verify"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI inspect-iavm verify code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "  verification: passed (mode=default)") {
+		t.Fatalf("stdout = %q, want verification summary", stdout.String())
+	}
+}
+
+func TestRunCLIInspectIavmSandboxProfileRequiresEntry(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "inspect-sandbox-no-entry.iavm")
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "helper",
+				TypeIndex: 0,
+				Code:      []core.Instruction{{Op: core.OpReturn}},
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "inspect-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("runCLI inspect-iavm sandbox code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "verify module error: no entry point function found") {
+		t.Fatalf("stderr = %q, want sandbox entry verification error", stderr.String())
+	}
+}
+
+func TestRunCLIInspectIavmCapabilityDenied(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "inspect-cap-denied.iavm")
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:         "entry",
+				TypeIndex:    0,
+				Code:         []core.Instruction{{Op: core.OpReturn}},
+				IsEntryPoint: true,
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "inspect-iavm", modulePath, "--allow-capability", "network"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("runCLI inspect-iavm capability deny code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "verify module error: capability[0]: kind \"fs\" is not allowed") {
+		t.Fatalf("stderr = %q, want capability deny error", stderr.String())
 	}
 }
 

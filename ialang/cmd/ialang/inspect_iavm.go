@@ -6,13 +6,14 @@ import (
 	"sort"
 	"strings"
 
+	"iavm/pkg/binary"
 	"iavm/pkg/module"
 )
 
-func executeInspectIavmCommand(path string, verbose bool, stdout, stderr io.Writer) error {
+func executeInspectIavmCommand(cmd cliCommand, stdout, stderr io.Writer) error {
 	_ = stderr
 
-	mod, err := loadIavmModule(path)
+	mod, err := loadIavmModule(cmd.file)
 	if err != nil {
 		return err
 	}
@@ -39,7 +40,13 @@ func executeInspectIavmCommand(path string, verbose bool, stdout, stderr io.Writ
 		fmt.Fprintf(stdout, "  capability_kinds: %s\n", inspectCapabilityKinds(mod.Capabilities))
 	}
 
-	if verbose {
+	if cmd.verify {
+		if err := inspectVerifyModule(mod, cmd, stdout); err != nil {
+			return err
+		}
+	}
+
+	if cmd.verbose {
 		for i, fn := range mod.Functions {
 			fmt.Fprintf(stdout, "  function[%d]: name=%s type=%d locals=%d code=%d max_stack=%d entry=%t\n",
 				i, inspectNameOrPlaceholder(fn.Name), fn.TypeIndex, len(fn.Locals), len(fn.Code), fn.MaxStack, fn.IsEntryPoint)
@@ -47,6 +54,30 @@ func executeInspectIavmCommand(path string, verbose bool, stdout, stderr io.Writ
 	}
 
 	return nil
+}
+
+func inspectVerifyModule(mod *module.Module, cmd cliCommand, stdout io.Writer) error {
+	result, err := binary.VerifyModule(mod, buildIavmVerifyOptions(cmd, false))
+	if err != nil {
+		return fmt.Errorf("verify module error: %w", err)
+	}
+	if !result.Valid {
+		return fmt.Errorf("module verification failed: %v", result.Errors)
+	}
+
+	fmt.Fprintf(stdout, "  verification: passed (mode=%s)\n", inspectVerifyMode(cmd))
+	return nil
+}
+
+func inspectVerifyMode(cmd cliCommand) string {
+	mode := "default"
+	if cmd.profile != "" {
+		mode = cmd.profile
+	}
+	if cmd.strict && mode == "default" {
+		mode = "strict"
+	}
+	return mode
 }
 
 func inspectEntryName(mod *module.Module) string {
