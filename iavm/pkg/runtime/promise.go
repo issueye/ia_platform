@@ -26,6 +26,7 @@ type promiseState struct {
 	HostTimeout      time.Duration
 	WaitTimeout      time.Duration
 	RetryPollEnabled bool
+	RetryWaitEnabled bool
 	RetryCount       int
 	RetryBackoff     time.Duration
 	RetryMaxBackoff  time.Duration
@@ -63,7 +64,7 @@ func rejectedPromiseValue(message string) core.Value {
 	}
 }
 
-func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, errText string, hostTimeout time.Duration, waitTimeout time.Duration, retryPollEnabled bool, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMaxElapsed time.Duration, retryMultiplier float64, retryJitter float64) core.Value {
+func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, errText string, hostTimeout time.Duration, waitTimeout time.Duration, retryPollEnabled bool, retryWaitEnabled bool, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMaxElapsed time.Duration, retryMultiplier float64, retryJitter float64) core.Value {
 	switch {
 	case !done:
 		return core.Value{
@@ -74,6 +75,7 @@ func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, err
 				HostTimeout:      hostTimeout,
 				WaitTimeout:      waitTimeout,
 				RetryPollEnabled: retryPollEnabled,
+				RetryWaitEnabled: retryWaitEnabled,
 				RetryCount:       retryCount,
 				RetryBackoff:     retryBackoff,
 				RetryMaxBackoff:  retryMaxBackoff,

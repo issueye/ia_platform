@@ -54,6 +54,7 @@ type capabilityTimeoutProfile struct {
 	RetryEnabled                bool
 	RetryCallEnabled            bool
 	RetryPollEnabled            bool
+	RetryWaitEnabled            bool
 	RetryCount                  int
 	RetryBackoff                time.Duration
 	RetryMaxBackoff             time.Duration
@@ -217,7 +218,7 @@ func (vm *VM) WaitSuspension(ctx context.Context) error {
 		if state.WaitTimeout > 0 {
 			waitTimeout = state.WaitTimeout
 		}
-		result, err := vm.retryPollLike(ctx, state.RetryPollEnabled, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMaxElapsed, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
+		result, err := vm.retryPollLike(ctx, state.RetryWaitEnabled, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMaxElapsed, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
 			waitCtx, cancel := vm.hostOperationContext(ctx, waitTimeout)
 			defer cancel()
 			return waiter.Wait(waitCtx, state.PollHandleID)
@@ -533,6 +534,7 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 		RetryEnabled:                true,
 		RetryCallEnabled:            true,
 		RetryPollEnabled:            true,
+		RetryWaitEnabled:            true,
 		RetryCount:                  vm.options.RetryCount,
 		RetryBackoff:                vm.options.RetryBackoff,
 		RetryMaxBackoff:             vm.options.RetryMaxBackoff,
@@ -560,8 +562,16 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	if retryCallEnabled, ok := readBool(config, "retry_call_enabled", "retryCallEnabled"); ok {
 		profile.RetryCallEnabled = retryCallEnabled
 	}
-	if retryPollEnabled, ok := readBool(config, "retry_poll_enabled", "retryPollEnabled"); ok {
+	retryPollEnabled, hasRetryPollEnabled := readBool(config, "retry_poll_enabled", "retryPollEnabled")
+	if hasRetryPollEnabled {
 		profile.RetryPollEnabled = retryPollEnabled
+	}
+	retryWaitEnabled, hasRetryWaitEnabled := readBool(config, "retry_wait_enabled", "retryWaitEnabled")
+	if hasRetryWaitEnabled {
+		profile.RetryWaitEnabled = retryWaitEnabled
+	}
+	if hasRetryPollEnabled && !hasRetryWaitEnabled {
+		profile.RetryWaitEnabled = retryPollEnabled
 	}
 	if retryCount, ok := readInt(config, "retry_count", "retryCount"); ok {
 		profile.RetryCount = retryCount
@@ -596,6 +606,7 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	if !profile.RetryEnabled {
 		profile.RetryCallEnabled = false
 		profile.RetryPollEnabled = false
+		profile.RetryWaitEnabled = false
 		profile.RetryCount = 0
 		profile.RetryBackoff = 0
 		profile.RetryMaxBackoff = 0

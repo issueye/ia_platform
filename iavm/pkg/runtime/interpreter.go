@@ -476,7 +476,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if err != nil {
 			return fmt.Errorf("host.poll failed: %w", err)
 		}
-		vm.stack.Push(promiseValueFromHostPoll(handleID, coreValueFromHostPoll(result), result.Done, result.Error, timeoutProfile.HostTimeout, timeoutProfile.WaitTimeout, timeoutProfile.RetryPollEnabled, timeoutProfile.RetryCount, timeoutProfile.RetryBackoff, timeoutProfile.RetryMaxBackoff, timeoutProfile.RetryMaxElapsed, timeoutProfile.RetryMultiplier, timeoutProfile.RetryJitter))
+		vm.stack.Push(promiseValueFromHostPoll(handleID, coreValueFromHostPoll(result), result.Done, result.Error, timeoutProfile.HostTimeout, timeoutProfile.WaitTimeout, timeoutProfile.RetryPollEnabled, timeoutProfile.RetryWaitEnabled, timeoutProfile.RetryCount, timeoutProfile.RetryBackoff, timeoutProfile.RetryMaxBackoff, timeoutProfile.RetryMaxElapsed, timeoutProfile.RetryMultiplier, timeoutProfile.RetryJitter))
 
 	case core.OpDup:
 		val := vm.stack.Peek(0)

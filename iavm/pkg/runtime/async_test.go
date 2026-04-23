@@ -965,6 +965,183 @@ func TestRunUntilSettledCanDisableCapabilityPollRetryProfile(t *testing.T) {
 	}
 }
 
+func TestRunUntilSettledDisablesWaitRetryWhenPollRetryDisabledByDefault(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitDeadlineFailures = 1
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"network", int64(35), "ready"},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"wait_timeout_ms":    int64(5),
+					"retry_count":        int64(1),
+					"retry_backoff_ms":   int64(1),
+					"retry_poll_enabled": false,
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 2},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	err = vm.RunUntilSettled(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunUntilSettled error = %v, want deadline exceeded", err)
+	}
+	if len(host.waitLog) != 1 {
+		t.Fatalf("expected wait retry to remain disabled by default compatibility, got %#v", host.waitLog)
+	}
+}
+
+func TestRunUntilSettledCanDisableOnlyCapabilityWaitRetryProfile(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitDeadlineFailures = 1
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"network", int64(35), "ready"},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"wait_timeout_ms":    int64(5),
+					"retry_count":        int64(1),
+					"retry_backoff_ms":   int64(1),
+					"retry_wait_enabled": false,
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 2},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	err = vm.RunUntilSettled(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunUntilSettled error = %v, want deadline exceeded", err)
+	}
+	if len(host.waitLog) != 1 {
+		t.Fatalf("expected wait retry-disabled capability to wait once, got %#v", host.waitLog)
+	}
+}
+
+func TestRunUntilSettledKeepsWaitRetryWhenPollRetryDisabledExplicitlyEnabled(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitDeadlineFailures = 1
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"network", int64(35), "ready"},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"wait_timeout_ms":    int64(5),
+					"retry_count":        int64(1),
+					"retry_backoff_ms":   int64(1),
+					"retry_poll_enabled": false,
+					"retry_wait_enabled": true,
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 2},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled failed: %v", err)
+	}
+	if len(host.waitLog) != 2 {
+		t.Fatalf("expected explicit wait retry to remain enabled, got %#v", host.waitLog)
+	}
+}
+
 func TestRunUntilSettledKeepsPollRetryWhenCallRetryIsDisabled(t *testing.T) {
 	host := newMockHost()
 	host.pollDeadlineFailures = 2
