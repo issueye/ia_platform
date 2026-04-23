@@ -526,6 +526,12 @@ func shouldRetryHTTPStatus(meta map[string]any, status int, method string) bool 
 			return false
 		}
 	}
+	excludedStatuses, _ := readIntList(meta, "retry_http_excluded_statuses", "retryHTTPExcludedStatuses")
+	for _, candidate := range excludedStatuses {
+		if candidate == status {
+			return false
+		}
+	}
 	statuses, hasStatuses := readIntList(meta, "retry_http_statuses", "retryHTTPStatuses")
 	for _, candidate := range statuses {
 		if candidate == status {
