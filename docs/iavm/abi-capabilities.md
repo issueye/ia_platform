@@ -293,10 +293,10 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - `Options.HostTimeout` 当前作用于单次 `AcquireCapability` / `Call` / `Poll`
 - `Options.WaitTimeout` 当前作用于单次 `Wait(handle)`
 - `Options.RetryCount` / `Options.RetryBackoff` 当前作用于 `poll/wait` 的超时重试
-- `Options.RetryMultiplier` / `Options.RetryMaxBackoff` 可定义 retry 的退避曲线
+- `Options.RetryMultiplier` / `Options.RetryMaxBackoff` / `Options.RetryJitter` 可定义 retry 的退避曲线与抖动策略
 - capability `Config.host_timeout_ms` / `Config.wait_timeout_ms` 可覆盖默认 operation timeout
 - capability `Config.retry_count` / `Config.retry_backoff_ms` 可覆盖默认 retry/backoff
-- capability `Config.retry_multiplier` / `Config.retry_backoff_max_ms` 可覆盖默认 backoff 曲线
+- capability `Config.retry_multiplier` / `Config.retry_backoff_max_ms` / `Config.retry_jitter` 可覆盖默认 backoff 曲线与抖动策略
 - pending promise 会保留触发时的 capability timeout profile，用于后续恢复路径
 - pending promise 也会保留触发时的 retry/backoff profile，用于后续恢复路径
 - 当前 wakeup 模型仍是最小实现：宿主只需保证 wait 最终返回 done 或 context 结束，不要求主动事件推送协议
@@ -321,7 +321,8 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - operation timeout 与总 deadline 并存时，先到期者生效
 - capability profile 优先级高于默认 timeout option
 - retry/backoff 目前仅覆盖可安全重试的 `poll/wait`，不自动重试 `host.call`
-- 当前 backoff 曲线为确定性退避，不引入随机 jitter
+- 默认 backoff 仍为确定性退避；仅当 `RetryJitter` 或 `Config.retry_jitter` 大于 `0` 时，runtime 才会在 base backoff 周围加入有界随机抖动
+- 当前 jitter 使用对称区间策略：`factor = 1 - jitter + 2 * jitter * random`，并继续受 `retry_backoff_max_ms` 上限约束
 
 ## 4. Network Capability
 
