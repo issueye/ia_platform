@@ -179,17 +179,18 @@ For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.4-closure-class-pl
 
 ---
 
-## 0.0.5 Host ABI & Control Flow（进行中）
+## 0.0.5 Host ABI & Control Flow（已完成）
 
-`0.0.5` 当前先推进以下收敛项：
+`0.0.5` 已完成以下平台契约收敛项：
 
 - `OpHostCall` 支持从栈上传递参数对象给 host capability
 - `fs.read_file` / `network.http_fetch` 等 operation 可直接接收结构化参数
 - FS typed request/response adapter 已接入 `DefaultHost`
 - Network HTTP typed request/response adapter 已接入 `DefaultHost`
-- verifier 已开始校验静态 host operation 与 capability 声明的一致性
+- verifier 已校验静态 host operation 与 capability 声明的一致性
 - runtime 已固定使用“最近一次导入的 capability”，并兼容模块级常量池的 capability kind
-- 后续继续推进更广的 Host ABI typed adapter、`extends/super` 与平台异步语义
+
+Release delivery note: `../docs/plans/2026-04-23-iavm-0.0.5-delivery-note.md`
 
 For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.5-host-abi-control-flow-plan.md`.
 
