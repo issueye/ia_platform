@@ -505,6 +505,7 @@ runtime 可以先将这些错误包装成运行时错误；后续若接入 ialan
 - `MarkRetryable` 只表达“该错误类别允许重试”，不自动绕过 `host.call` 的 allowlist 约束
 - `DefaultHost` 当前会对网络 I/O 路径上的瞬时 `net.Error`（如 timeout / temporary）自动应用该标记；参数校验、policy 拒绝、capability 不存在等错误仍保持非 retryable
 - 对 `network.http_fetch`，`DefaultHost` 还支持 capability 级 `retry_http_statuses` / `retryHTTPStatuses` 配置；只有命中该显式状态码列表时，HTTP 响应才会被映射为 retryable error，未配置时仍按普通响应返回
+- `network.http_fetch` 还支持 capability 级 `retry_http_status_classes` / `retryHTTPStatusClasses` 配置，用于声明 `5xx` 这类状态族；命中时同样会触发 retryable error 映射
 - `network.http_fetch` 还支持 capability 级 `retry_http_methods` / `retryHTTPMethods` 安全阀；当该列表存在时，只有命中的 HTTP method 才允许上述状态码重试映射生效
 - 当 `network.http_fetch` 命中的 HTTP 响应同时带有 `Retry-After` 头时，`DefaultHost` 会把它解析为 backoff hint 一并传给 runtime
 
