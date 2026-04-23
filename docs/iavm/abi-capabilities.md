@@ -299,6 +299,7 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - `Options.RetryExcludedCallOps` 可在上述 allowlist 基础上显式排除某些 `host.call` operation
 - `Options.RetryExcludedCallOpPrefixes` 可按前缀批量排除某些 `host.call` operation family
 - capability `Config.host_timeout_ms` / `Config.wait_timeout_ms` 可覆盖默认 operation timeout
+- capability `Config.retry_enabled` 可为单个 capability 显式关闭 inherited retry/backoff 策略
 - capability `Config.retry_count` / `Config.retry_backoff_ms` 可覆盖默认 retry/backoff
 - capability `Config.retry_multiplier` / `Config.retry_backoff_max_ms` / `Config.retry_max_elapsed_ms` / `Config.retry_jitter` 可覆盖默认 backoff 曲线、总重试时间预算与抖动策略
 - capability `Config.retry_call_ops` 可覆盖默认 `host.call` retry allowlist
@@ -330,6 +331,7 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - capability profile 优先级高于默认 timeout option
 - retry/backoff 目前仅覆盖可安全重试的 `poll/wait`，不自动重试 `host.call`
 - `host.call` 当前仅对显式 allowlist 或前缀 allowlist 中、且未命中 exact/prefix exclusion 的 operation 开启超时重试；未列入 allowlist、未命中允许前缀或被 exclusion 排除的调用即使配置了 retry/backoff 也只执行一次
+- 当 capability 显式设置 `retry_enabled = false` 时，该 capability 的 `poll/wait` 与 allowlisted `host.call` 都会回退为单次尝试
 - 默认 backoff 仍为确定性退避；仅当 `RetryJitter` 或 `Config.retry_jitter` 大于 `0` 时，runtime 才会在 base backoff 周围加入有界随机抖动
 - 当前 jitter 使用对称区间策略：`factor = 1 - jitter + 2 * jitter * random`，并继续受 `retry_backoff_max_ms` 上限约束
 - runtime 当前会在两类错误上触发 retry：`context deadline exceeded`，以及宿主通过 `iacommon/pkg/host/api.MarkRetryable(err)` 显式标记的 retryable error
