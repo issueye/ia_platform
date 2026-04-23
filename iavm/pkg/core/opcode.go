@@ -54,4 +54,5 @@ const (
 	OpJumpIfNullish
 	OpJumpIfNotNullish
 	OpClosure
+	OpNewInstance
 )

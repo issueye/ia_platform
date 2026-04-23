@@ -694,9 +694,8 @@ func lowerInstructions(ialangInsts []bytecode.Instruction, funcMap map[int]int) 
 			iavmInst.Op = core.OpMakeObject
 
 		case bytecode.OpNew:
-			iavmInst.Op = core.OpCall
+			iavmInst.Op = core.OpNewInstance
 			iavmInst.A = uint32(inst.A)
-			iavmInst.B = uint32(inst.B)
 
 		case bytecode.OpIndex:
 			iavmInst.Op = core.OpIndex

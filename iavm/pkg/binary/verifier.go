@@ -446,6 +446,8 @@ func stackEffect(inst core.Instruction, m *module.Module) (int, int, error) {
 		return 2, 0, nil
 	case core.OpCall:
 		return callStackEffect(inst, m)
+	case core.OpNewInstance:
+		return int(inst.A) + 1, 1, nil
 	case core.OpReturn:
 		return 0, 0, nil
 	default:
