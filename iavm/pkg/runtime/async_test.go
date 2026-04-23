@@ -908,6 +908,68 @@ func TestRunUntilSettledCanDisableCapabilityRetryProfile(t *testing.T) {
 	}
 }
 
+func TestRunUntilSettledKeepsPollRetryWhenCallRetryIsDisabled(t *testing.T) {
+	host := newMockHost()
+	host.pollDeadlineFailures = 2
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"network", int64(37), "ready"},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"retry_call_enabled": false,
+					"retry_count":        int64(2),
+					"retry_backoff_ms":   int64(1),
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 2},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		HostTimeout:  5 * time.Millisecond,
+		RetryCount:   2,
+		RetryBackoff: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled failed: %v", err)
+	}
+	if len(host.pollLog) < 3 {
+		t.Fatalf("expected poll retry attempts to remain enabled, got %#v", host.pollLog)
+	}
+}
+
 func TestRetryCallLikeStopsWhenElapsedBudgetIsExhausted(t *testing.T) {
 	vm := &VM{}
 	attempts := 0

@@ -52,6 +52,7 @@ type capabilityTimeoutProfile struct {
 	HostTimeout                 time.Duration
 	WaitTimeout                 time.Duration
 	RetryEnabled                bool
+	RetryCallEnabled            bool
 	RetryCount                  int
 	RetryBackoff                time.Duration
 	RetryMaxBackoff             time.Duration
@@ -526,6 +527,7 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 		HostTimeout:                 vm.options.HostTimeout,
 		WaitTimeout:                 vm.options.WaitTimeout,
 		RetryEnabled:                true,
+		RetryCallEnabled:            true,
 		RetryCount:                  vm.options.RetryCount,
 		RetryBackoff:                vm.options.RetryBackoff,
 		RetryMaxBackoff:             vm.options.RetryMaxBackoff,
@@ -549,6 +551,9 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	}
 	if retryEnabled, ok := readBool(config, "retry_enabled", "retryEnabled"); ok {
 		profile.RetryEnabled = retryEnabled
+	}
+	if retryCallEnabled, ok := readBool(config, "retry_call_enabled", "retryCallEnabled"); ok {
+		profile.RetryCallEnabled = retryCallEnabled
 	}
 	if retryCount, ok := readInt(config, "retry_count", "retryCount"); ok {
 		profile.RetryCount = retryCount
@@ -587,6 +592,11 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 		profile.RetryMaxElapsed = 0
 		profile.RetryMultiplier = 0
 		profile.RetryJitter = 0
+		profile.RetryCallOps = nil
+		profile.RetryCallOpPrefixes = nil
+		profile.RetryExcludedCallOps = nil
+		profile.RetryExcludedCallOpPrefixes = nil
+	} else if !profile.RetryCallEnabled {
 		profile.RetryCallOps = nil
 		profile.RetryCallOpPrefixes = nil
 		profile.RetryExcludedCallOps = nil
