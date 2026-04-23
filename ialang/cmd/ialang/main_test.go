@@ -316,7 +316,7 @@ func TestRunCLIVerifyIavmStrictRequiresEntry(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI verify-iavm strict code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "verify module error: no entry point function found") {
+	if !strings.Contains(stderr.String(), "[verify] no entry point function found") {
 		t.Fatalf("stderr = %q, want strict verification error", stderr.String())
 	}
 }
@@ -328,7 +328,7 @@ func TestRunCLIVerifyIavmFileNotFound(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI verify-iavm code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "read file error:") {
+	if !strings.Contains(stderr.String(), "[decode]") {
 		t.Fatalf("stderr = %q, want read file error", stderr.String())
 	}
 }
@@ -346,7 +346,7 @@ func TestRunCLIVerifyIavmDecodeError(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI verify-iavm code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "decode module error:") {
+	if !strings.Contains(stderr.String(), "[decode]") {
 		t.Fatalf("stderr = %q, want decode error", stderr.String())
 	}
 }
@@ -382,7 +382,7 @@ func TestRunCLIVerifyIavmSandboxProfileRequiresEntry(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI verify-iavm sandbox code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "verify module error: no entry point function found") {
+	if !strings.Contains(stderr.String(), "[verify] no entry point function found") {
 		t.Fatalf("stderr = %q, want sandbox entry verification error", stderr.String())
 	}
 }
@@ -424,7 +424,7 @@ func TestRunCLIVerifyIavmSandboxProfileAppliesResourceLimit(t *testing.T) {
 	if codeResult != 1 {
 		t.Fatalf("runCLI verify-iavm sandbox limit code = %d, want 1", codeResult)
 	}
-	if !strings.Contains(stderr.String(), "verify module error: function[0]: code size 4097 exceeds limit 4096") {
+	if !strings.Contains(stderr.String(), "[verify] function[0]: code size 4097 exceeds limit 4096") {
 		t.Fatalf("stderr = %q, want sandbox code size limit error", stderr.String())
 	}
 }
@@ -544,7 +544,7 @@ func TestRunCLIVerifyIavmCapabilityDenied(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI verify-iavm capability deny code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "verify module error: capability[0]: kind \"fs\" is not allowed") {
+	if !strings.Contains(stderr.String(), "[verify] capability[0]: kind \"fs\" is not allowed") {
 		t.Fatalf("stderr = %q, want capability deny error", stderr.String())
 	}
 }
@@ -577,7 +577,7 @@ func TestRunCLIVerifyIavmFunctionLimitExceeded(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI verify-iavm function limit code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "verify module error: function count 2 exceeds limit 1") {
+	if !strings.Contains(stderr.String(), "[verify] function count 2 exceeds limit 1") {
 		t.Fatalf("stderr = %q, want function limit error", stderr.String())
 	}
 }
@@ -735,7 +735,7 @@ func TestRunCLIRunIavmSandboxProfileAppliesVerifierOptions(t *testing.T) {
 	if codeResult != 1 {
 		t.Fatalf("runCLI run-iavm sandbox limit code = %d, want 1", codeResult)
 	}
-	if !strings.Contains(stderr.String(), "verify module error: function[0]: code size 4097 exceeds limit 4096") {
+	if !strings.Contains(stderr.String(), "[verify] function[0]: code size 4097 exceeds limit 4096") {
 		t.Fatalf("stderr = %q, want sandbox code size limit error", stderr.String())
 	}
 }
@@ -775,7 +775,7 @@ func TestRunCLIRunIavmCapabilityDenied(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI run-iavm capability deny code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "verify module error: capability[0]: kind \"fs\" is not allowed") {
+	if !strings.Contains(stderr.String(), "[verify] capability[0]: kind \"fs\" is not allowed") {
 		t.Fatalf("stderr = %q, want capability deny error", stderr.String())
 	}
 }
@@ -959,7 +959,7 @@ func TestRunCLIInspectIavmSandboxProfileRequiresEntry(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI inspect-iavm sandbox code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "verify module error: no entry point function found") {
+	if !strings.Contains(stderr.String(), "[verify] no entry point function found") {
 		t.Fatalf("stderr = %q, want sandbox entry verification error", stderr.String())
 	}
 }
@@ -999,7 +999,7 @@ func TestRunCLIInspectIavmCapabilityDenied(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI inspect-iavm capability deny code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "verify module error: capability[0]: kind \"fs\" is not allowed") {
+	if !strings.Contains(stderr.String(), "[verify] capability[0]: kind \"fs\" is not allowed") {
 		t.Fatalf("stderr = %q, want capability deny error", stderr.String())
 	}
 }
@@ -1011,7 +1011,7 @@ func TestRunCLIInspectIavmFileNotFound(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI inspect-iavm code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "read file error:") {
+	if !strings.Contains(stderr.String(), "[decode]") {
 		t.Fatalf("stderr = %q, want read file error", stderr.String())
 	}
 }
@@ -1029,7 +1029,7 @@ func TestRunCLIInspectIavmDecodeError(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("runCLI inspect-iavm code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "decode module error:") {
+	if !strings.Contains(stderr.String(), "[decode]") {
 		t.Fatalf("stderr = %q, want decode error", stderr.String())
 	}
 }
@@ -1373,5 +1373,131 @@ func TestBuildVMOptionsFromEnv(t *testing.T) {
 	_, err = buildVMOptionsFromEnv()
 	if err == nil {
 		t.Fatal("buildVMOptionsFromEnv invalid env expected error, got nil")
+	}
+}
+
+func TestRunCLIIavmHelloExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "out.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "iavm_hello.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm hello.ia failed: %s", stderr.String())
+	}
+}
+
+func TestRunCLIIavmControlExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "control.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "iavm_control.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm iavm_control.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm iavm_control.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm iavm_control.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "while-ok") {
+		t.Fatalf("iavm_control.ia output missing 'while-ok': %q", runOutput)
+	}
+}
+
+func TestRunCLIIavmFunctionExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "function.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "iavm_function.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm iavm_function.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm iavm_function.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm iavm_function.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "func-ok") {
+		t.Fatalf("iavm_function.ia output missing 'func-ok': %q", runOutput)
+	}
+}
+
+func TestRunCLIIavmArithExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "arith.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "iavm_arith.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm iavm_arith.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm iavm_arith.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm iavm_arith.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "array-ok") {
+		t.Fatalf("iavm_arith.ia output missing 'array-ok': %q", runOutput)
+	}
+}
+
+func TestRunCLIHelloIaExternalImportRuntimeError(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "hello.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "hello.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm hello.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "run-iavm", modulePath}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("run-iavm hello.ia expected exit 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "cannot get property from non-object") {
+		t.Fatalf("hello.ia expected runtime error about non-object, got: %s", stderr.String())
 	}
 }

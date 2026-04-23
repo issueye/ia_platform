@@ -14,6 +14,13 @@ const (
 	VerifyProfileSandbox VerifyProfile = "sandbox"
 )
 
+func (p VerifyProfile) String() string {
+	if p == "" {
+		return string(VerifyProfileDefault)
+	}
+	return string(p)
+}
+
 type VerifyPolicyOverrides struct {
 	RequireEntry *bool
 
@@ -37,6 +44,55 @@ type VerifyOptions struct {
 	MaxStackPerFunction    int
 	AllowedCapabilities    []module.CapabilityKind
 	CapabilityAllowlistSet bool
+}
+
+func (o VerifyOptions) CapabilityPolicy() string {
+	if !o.CapabilityAllowlistSet {
+		return "allow-all"
+	}
+	if len(o.AllowedCapabilities) == 0 {
+		return "deny-all"
+	}
+	return "allowlist:" + formatCapabilityKinds(o.AllowedCapabilities)
+}
+
+func (o VerifyOptions) PolicySummary() string {
+	s := "policy:"
+	if o.RequireEntry {
+		s += " require-entry"
+	}
+	if o.MaxFunctions > 0 {
+		s += fmt.Sprintf(" max-functions=%d", o.MaxFunctions)
+	}
+	if o.MaxConstants > 0 {
+		s += fmt.Sprintf(" max-constants=%d", o.MaxConstants)
+	}
+	if o.MaxCodeSizePerFunction > 0 {
+		s += fmt.Sprintf(" max-code-size=%d", o.MaxCodeSizePerFunction)
+	}
+	if o.MaxLocalsPerFunction > 0 {
+		s += fmt.Sprintf(" max-locals=%d", o.MaxLocalsPerFunction)
+	}
+	if o.MaxStackPerFunction > 0 {
+		s += fmt.Sprintf(" max-stack=%d", o.MaxStackPerFunction)
+	}
+	s += " capabilities=" + o.CapabilityPolicy()
+	return s
+}
+
+func formatCapabilityKinds(kinds []module.CapabilityKind) string {
+	if len(kinds) == 0 {
+		return ""
+	}
+	names := make([]string, len(kinds))
+	for i, k := range kinds {
+		names[i] = string(k)
+	}
+	result := names[0]
+	for i := 1; i < len(names); i++ {
+		result += "," + names[i]
+	}
+	return result
 }
 
 func BuildVerifyOptions(profile VerifyProfile, overrides VerifyPolicyOverrides) (VerifyOptions, error) {
@@ -367,7 +423,7 @@ func stackEffect(inst core.Instruction, m *module.Module) (int, int, error) {
 	switch inst.Op {
 	case core.OpNop, core.OpJump, core.OpPushTry, core.OpPopTry:
 		return 0, 0, nil
-	case core.OpConst, core.OpLoadLocal, core.OpLoadGlobal, core.OpMakeObject, core.OpImportFunc, core.OpImportCap, core.OpHostPoll:
+	case core.OpConst, core.OpLoadLocal, core.OpLoadGlobal, core.OpMakeObject, core.OpImportFunc, core.OpImportCap, core.OpHostPoll, core.OpClosure:
 		return 0, 1, nil
 	case core.OpStoreLocal, core.OpStoreGlobal, core.OpJumpIfFalse, core.OpPop, core.OpThrow:
 		return 1, 0, nil

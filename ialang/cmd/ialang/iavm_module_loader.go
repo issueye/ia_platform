@@ -11,12 +11,12 @@ import (
 func loadIavmModule(path string) (*module.Module, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read file error: %w", err)
+		return nil, fmt.Errorf("[decode] read file error: %w", err)
 	}
 
 	mod, err := binary.DecodeModule(data)
 	if err != nil {
-		return nil, fmt.Errorf("decode module error: %w", err)
+		return nil, fmt.Errorf("[decode] %w", err)
 	}
 	return mod, nil
 }
@@ -29,10 +29,10 @@ func loadAndVerifyIavmModule(path string, opts binary.VerifyOptions) (*module.Mo
 
 	result, err := binary.VerifyModule(mod, opts)
 	if err != nil {
-		return nil, fmt.Errorf("verify module error: %w", err)
+		return nil, fmt.Errorf("[verify] %w", err)
 	}
 	if !result.Valid {
-		return nil, fmt.Errorf("module verification failed: %v", result.Errors)
+		return nil, fmt.Errorf("[verify] module verification failed: %v", result.Errors)
 	}
 	return mod, nil
 }

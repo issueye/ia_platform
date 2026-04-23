@@ -29,11 +29,11 @@ func executeRunIavmCommand(cmd cliCommand, stderr io.Writer) error {
 		Host: host,
 	})
 	if err != nil {
-		return fmt.Errorf("vm init error: %w", err)
+		return fmt.Errorf("[runtime] vm init error: %w", err)
 	}
 
 	if err := vm.Run(); err != nil {
-		return fmt.Errorf("runtime error: %w", err)
+		return fmt.Errorf("[runtime] %w", err)
 	}
 
 	return nil

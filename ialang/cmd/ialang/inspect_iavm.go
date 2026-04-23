@@ -63,13 +63,20 @@ func inspectVerifyModule(mod *module.Module, cmd cliCommand, stdout io.Writer) e
 	}
 	result, err := binary.VerifyModule(mod, opts)
 	if err != nil {
-		return fmt.Errorf("verify module error: %w", err)
+		return fmt.Errorf("[verify] %w", err)
 	}
 	if !result.Valid {
-		return fmt.Errorf("module verification failed: %v", result.Errors)
+		return fmt.Errorf("[verify] module verification failed: %v", result.Errors)
 	}
 
-	fmt.Fprintf(stdout, "  verification: passed (mode=%s)\n", inspectVerifyMode(cmd))
+	mode := inspectVerifyMode(cmd)
+	fmt.Fprintf(stdout, "  verification: passed (mode=%s)\n", mode)
+	fmt.Fprintf(stdout, "  %s\n", opts.PolicySummary())
+	if len(mod.Capabilities) > 0 {
+		fmt.Fprintf(stdout, "  module_capabilities: %s\n", inspectCapabilityKinds(mod.Capabilities))
+	} else {
+		fmt.Fprintf(stdout, "  module_capabilities: none\n")
+	}
 	return nil
 }
 

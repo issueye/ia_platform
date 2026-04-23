@@ -1,0 +1,9 @@
+let a = 10;
+let b = 20;
+let c = 30;
+let s = a + b + c;
+if (s == 60) {
+  print("array-ok");
+} else {
+  print("array-fail");
+}

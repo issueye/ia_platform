@@ -22,21 +22,21 @@ func executeBuildIavmCommand(entryPath, outPath string, stderr io.Writer) error 
 
 	chunk, err := compileRunSourceWithUnit(entryPath, readFileOrEmpty(entryPath), stderr)
 	if err != nil {
-		return err
+		return fmt.Errorf("[compile] %w", err)
 	}
 
 	mod, err := bridge_ialang.LowerToModule(chunk)
 	if err != nil {
-		return fmt.Errorf("lowering failed: %w", err)
+		return fmt.Errorf("[compile] lowering failed: %w", err)
 	}
 
 	data, err := binary.EncodeModule(mod)
 	if err != nil {
-		return fmt.Errorf("encoding failed: %w", err)
+		return fmt.Errorf("[compile] encoding failed: %w", err)
 	}
 
 	if err := os.WriteFile(outPath, data, 0644); err != nil {
-		return fmt.Errorf("write output failed: %w", err)
+		return fmt.Errorf("[compile] write output failed: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "built %s (%d bytes)\n", outPath, len(data))

@@ -478,11 +478,175 @@ func TestVerifyModule_CapabilityAllowlist(t *testing.T) {
 		},
 	}
 
-	if _, err := VerifyModule(mod, VerifyOptions{AllowedCapabilities: []module.CapabilityKind{module.CapabilityFS}}); err != nil {
+	if _, err := VerifyModule(mod, VerifyOptions{CapabilityAllowlistSet: true, AllowedCapabilities: []module.CapabilityKind{module.CapabilityFS}}); err != nil {
 		t.Fatalf("expected fs capability to be allowed, got %v", err)
 	}
-	if _, err := VerifyModule(mod, VerifyOptions{AllowedCapabilities: []module.CapabilityKind{module.CapabilityNetwork}}); err == nil {
+	if _, err := VerifyModule(mod, VerifyOptions{CapabilityAllowlistSet: true, AllowedCapabilities: []module.CapabilityKind{module.CapabilityNetwork}}); err == nil {
 		t.Fatal("expected fs capability to be denied by allowlist")
+	}
+}
+
+func TestBuildVerifyOptions_DefaultProfile(t *testing.T) {
+	opts, err := BuildVerifyOptions(VerifyProfileDefault, VerifyPolicyOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.RequireEntry {
+		t.Fatal("default profile should not require entry")
+	}
+	if opts.CapabilityAllowlistSet {
+		t.Fatal("default profile should not set capability allowlist")
+	}
+}
+
+func TestBuildVerifyOptions_StrictProfile(t *testing.T) {
+	opts, err := BuildVerifyOptions(VerifyProfileStrict, VerifyPolicyOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !opts.RequireEntry {
+		t.Fatal("strict profile should require entry")
+	}
+	if opts.CapabilityAllowlistSet {
+		t.Fatal("strict profile should not set capability allowlist")
+	}
+}
+
+func TestBuildVerifyOptions_SandboxProfile(t *testing.T) {
+	opts, err := BuildVerifyOptions(VerifyProfileSandbox, VerifyPolicyOverrides{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !opts.RequireEntry {
+		t.Fatal("sandbox profile should require entry")
+	}
+	if !opts.CapabilityAllowlistSet {
+		t.Fatal("sandbox profile should set capability allowlist")
+	}
+	if len(opts.AllowedCapabilities) != 0 {
+		t.Fatal("sandbox profile should have empty allowlist (deny-all)")
+	}
+	if opts.MaxFunctions != 128 {
+		t.Fatalf("sandbox profile should set max functions to 128, got %d", opts.MaxFunctions)
+	}
+}
+
+func TestBuildVerifyOptions_OverridesApplyToSandbox(t *testing.T) {
+	opts, err := BuildVerifyOptions(VerifyProfileSandbox, VerifyPolicyOverrides{
+		MaxFunctions: 256,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.MaxFunctions != 256 {
+		t.Fatalf("override should set max functions to 256, got %d", opts.MaxFunctions)
+	}
+}
+
+func TestBuildVerifyOptions_CapabilityAllowlistOverride(t *testing.T) {
+	opts, err := BuildVerifyOptions(VerifyProfileDefault, VerifyPolicyOverrides{
+		CapabilityAllowlistSet: true,
+		AllowedCapabilities:    []module.CapabilityKind{module.CapabilityFS},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !opts.CapabilityAllowlistSet {
+		t.Fatal("override should set capability allowlist")
+	}
+	if len(opts.AllowedCapabilities) != 1 || opts.AllowedCapabilities[0] != module.CapabilityFS {
+		t.Fatalf("override should set allowed capabilities to [fs], got %v", opts.AllowedCapabilities)
+	}
+}
+
+func TestBuildVerifyOptions_ExplicitDenyAll(t *testing.T) {
+	opts, err := BuildVerifyOptions(VerifyProfileDefault, VerifyPolicyOverrides{
+		CapabilityAllowlistSet: true,
+		AllowedCapabilities:    []module.CapabilityKind{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !opts.CapabilityAllowlistSet {
+		t.Fatal("explicit deny-all should set CapabilityAllowlistSet")
+	}
+	if len(opts.AllowedCapabilities) != 0 {
+		t.Fatal("explicit deny-all should have empty AllowedCapabilities")
+	}
+}
+
+func TestBuildVerifyOptions_UnsupportedProfile(t *testing.T) {
+	_, err := BuildVerifyOptions(VerifyProfile("custom"), VerifyPolicyOverrides{})
+	if err == nil {
+		t.Fatal("expected error for unsupported profile")
+	}
+}
+
+func TestCapabilityPolicy_AllowAll(t *testing.T) {
+	opts := VerifyOptions{CapabilityAllowlistSet: false}
+	if opts.CapabilityPolicy() != "allow-all" {
+		t.Fatalf("expected 'allow-all', got %q", opts.CapabilityPolicy())
+	}
+}
+
+func TestCapabilityPolicy_DenyAll(t *testing.T) {
+	opts := VerifyOptions{CapabilityAllowlistSet: true, AllowedCapabilities: nil}
+	if opts.CapabilityPolicy() != "deny-all" {
+		t.Fatalf("expected 'deny-all', got %q", opts.CapabilityPolicy())
+	}
+}
+
+func TestCapabilityPolicy_Allowlist(t *testing.T) {
+	opts := VerifyOptions{CapabilityAllowlistSet: true, AllowedCapabilities: []module.CapabilityKind{module.CapabilityFS, module.CapabilityNetwork}}
+	if opts.CapabilityPolicy() != "allowlist:fs,network" {
+		t.Fatalf("expected 'allowlist:fs,network', got %q", opts.CapabilityPolicy())
+	}
+}
+
+func TestPolicySummary_Default(t *testing.T) {
+	opts := VerifyOptions{}
+	s := opts.PolicySummary()
+	if s != "policy: capabilities=allow-all" {
+		t.Fatalf("unexpected summary: %q", s)
+	}
+}
+
+func TestPolicySummary_Sandbox(t *testing.T) {
+	opts, _ := BuildVerifyOptions(VerifyProfileSandbox, VerifyPolicyOverrides{})
+	s := opts.PolicySummary()
+	if s == "" {
+		t.Fatal("expected non-empty summary")
+	}
+}
+
+func TestVerifyModule_CapabilityDenyAll(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{CapabilityAllowlistSet: true, AllowedCapabilities: nil})
+	if err == nil {
+		t.Fatal("expected capability to be denied with deny-all policy")
+	}
+}
+
+func TestVerifyModule_CapabilityAllowAllByDefault(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+			{Kind: module.CapabilityNetwork},
+		},
+	}
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err != nil {
+		t.Fatalf("expected all capabilities allowed when allowlist not set, got %v", err)
 	}
 }
 

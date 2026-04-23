@@ -1,0 +1,15 @@
+function add(a, b) {
+  return a + b;
+}
+
+function mul(a, b) {
+  return a * b;
+}
+
+let r1 = add(3, 4);
+let r2 = mul(r1, 2);
+if (r2 == 14) {
+  print("func-ok");
+} else {
+  print("func-fail");
+}
