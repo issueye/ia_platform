@@ -23,11 +23,13 @@ type DefaultHost struct {
 	FS      hostfs.Provider
 	Network hostnet.Provider
 
-	mu           sync.Mutex
-	capabilities map[string]CapabilityInstance
-	nextCapID    uint64
-	fileHandles  map[uint64]hostfs.FileHandle
-	nextHandleID uint64
+	mu              sync.Mutex
+	capabilities    map[string]CapabilityInstance
+	nextCapID       uint64
+	fileHandles     map[uint64]hostfs.FileHandle
+	socketHandles   map[uint64]hostnet.SocketHandle
+	listenerHandles map[uint64]hostnet.ListenerHandle
+	nextHandleID    uint64
 }
 
 func (h *DefaultHost) AcquireCapability(ctx context.Context, req AcquireRequest) (CapabilityInstance, error) {
@@ -98,6 +100,22 @@ func (h *DefaultHost) Poll(ctx context.Context, handleID uint64) (PollResult, er
 	defer h.mu.Unlock()
 	if h.fileHandles != nil {
 		if _, ok := h.fileHandles[handleID]; ok {
+			return PollResult{
+				Done:  true,
+				Value: map[string]any{"ready": true, "handle": handleID},
+			}, nil
+		}
+	}
+	if h.socketHandles != nil {
+		if _, ok := h.socketHandles[handleID]; ok {
+			return PollResult{
+				Done:  true,
+				Value: map[string]any{"ready": true, "handle": handleID},
+			}, nil
+		}
+	}
+	if h.listenerHandles != nil {
+		if _, ok := h.listenerHandles[handleID]; ok {
 			return PollResult{
 				Done:  true,
 				Value: map[string]any{"ready": true, "handle": handleID},
@@ -361,9 +379,175 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 			return CallResult{}, err
 		}
 		return encodeNetworkHTTPFetchResponse(response), nil
+	case "network.dial":
+		parsed, err := decodeNetworkDialRequest(req.Args)
+		if err != nil {
+			return CallResult{}, err
+		}
+		handle, err := h.Network.Dial(ctx, parsed.Endpoint, parsed.Opts)
+		if err != nil {
+			return CallResult{}, err
+		}
+		handleID := h.storeSocketHandle(handle)
+		return encodeNetworkDialResponse(handleID), nil
+	case "network.listen":
+		parsed, err := decodeNetworkListenRequest(req.Args)
+		if err != nil {
+			return CallResult{}, err
+		}
+		handle, err := h.Network.Listen(ctx, parsed.Endpoint, parsed.Opts)
+		if err != nil {
+			return CallResult{}, err
+		}
+		handleID := h.storeListenerHandle(handle)
+		return encodeNetworkListenResponse(handleID), nil
+	case "network.accept":
+		parsed, err := decodeNetworkAcceptRequest(req.Args)
+		if err != nil {
+			return CallResult{}, err
+		}
+		handle, err := h.lookupListenerHandle(parsed.Handle)
+		if err != nil {
+			return CallResult{}, err
+		}
+		socket, err := handle.Accept(ctx)
+		if err != nil {
+			return CallResult{}, err
+		}
+		handleID := h.storeSocketHandle(socket)
+		return encodeNetworkAcceptResponse(handleID), nil
+	case "network.send":
+		parsed, err := decodeNetworkSendRequest(req.Args)
+		if err != nil {
+			return CallResult{}, err
+		}
+		handle, err := h.lookupSocketHandle(parsed.Handle)
+		if err != nil {
+			return CallResult{}, err
+		}
+		n, err := handle.Send(ctx, parsed.Data)
+		if err != nil {
+			return CallResult{}, err
+		}
+		return encodeNetworkSendResponse(int64(n)), nil
+	case "network.recv":
+		parsed, err := decodeNetworkRecvRequest(req.Args)
+		if err != nil {
+			return CallResult{}, err
+		}
+		handle, err := h.lookupSocketHandle(parsed.Handle)
+		if err != nil {
+			return CallResult{}, err
+		}
+		data, err := handle.Recv(ctx, int(parsed.Size))
+		if err != nil {
+			return CallResult{}, err
+		}
+		return encodeNetworkRecvResponse(data, int64(len(data))), nil
+	case "network.close":
+		parsed, err := decodeNetworkCloseRequest(req.Args)
+		if err != nil {
+			return CallResult{}, err
+		}
+		if socket, err := h.releaseSocketHandle(parsed.Handle); err == nil {
+			if err := socket.Close(ctx); err != nil {
+				return CallResult{}, err
+			}
+			return emptyCallResult(), nil
+		}
+		listener, err := h.releaseListenerHandle(parsed.Handle)
+		if err != nil {
+			return CallResult{}, err
+		}
+		if err := listener.Close(ctx); err != nil {
+			return CallResult{}, err
+		}
+		return emptyCallResult(), nil
 	default:
 		return CallResult{}, fmt.Errorf("unknown network operation: %w: %s", ErrCapabilityUnsupported, req.Operation)
 	}
+}
+
+func (h *DefaultHost) storeSocketHandle(handle hostnet.SocketHandle) uint64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.socketHandles == nil {
+		h.socketHandles = map[uint64]hostnet.SocketHandle{}
+	}
+	h.nextHandleID++
+	if h.nextHandleID == 0 {
+		h.nextHandleID++
+	}
+	h.socketHandles[h.nextHandleID] = handle
+	return h.nextHandleID
+}
+
+func (h *DefaultHost) lookupSocketHandle(handleID uint64) (hostnet.SocketHandle, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.socketHandles == nil {
+		return nil, fmt.Errorf("%w: %d", ErrCapabilityNotFound, handleID)
+	}
+	handle, ok := h.socketHandles[handleID]
+	if !ok {
+		return nil, fmt.Errorf("%w: %d", ErrCapabilityNotFound, handleID)
+	}
+	return handle, nil
+}
+
+func (h *DefaultHost) releaseSocketHandle(handleID uint64) (hostnet.SocketHandle, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.socketHandles == nil {
+		return nil, fmt.Errorf("%w: %d", ErrCapabilityNotFound, handleID)
+	}
+	handle, ok := h.socketHandles[handleID]
+	if !ok {
+		return nil, fmt.Errorf("%w: %d", ErrCapabilityNotFound, handleID)
+	}
+	delete(h.socketHandles, handleID)
+	return handle, nil
+}
+
+func (h *DefaultHost) storeListenerHandle(handle hostnet.ListenerHandle) uint64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.listenerHandles == nil {
+		h.listenerHandles = map[uint64]hostnet.ListenerHandle{}
+	}
+	h.nextHandleID++
+	if h.nextHandleID == 0 {
+		h.nextHandleID++
+	}
+	h.listenerHandles[h.nextHandleID] = handle
+	return h.nextHandleID
+}
+
+func (h *DefaultHost) lookupListenerHandle(handleID uint64) (hostnet.ListenerHandle, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.listenerHandles == nil {
+		return nil, fmt.Errorf("%w: %d", ErrCapabilityNotFound, handleID)
+	}
+	handle, ok := h.listenerHandles[handleID]
+	if !ok {
+		return nil, fmt.Errorf("%w: %d", ErrCapabilityNotFound, handleID)
+	}
+	return handle, nil
+}
+
+func (h *DefaultHost) releaseListenerHandle(handleID uint64) (hostnet.ListenerHandle, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.listenerHandles == nil {
+		return nil, fmt.Errorf("%w: %d", ErrCapabilityNotFound, handleID)
+	}
+	handle, ok := h.listenerHandles[handleID]
+	if !ok {
+		return nil, fmt.Errorf("%w: %d", ErrCapabilityNotFound, handleID)
+	}
+	delete(h.listenerHandles, handleID)
+	return handle, nil
 }
 
 func readString(args map[string]any, key string) (string, error) {

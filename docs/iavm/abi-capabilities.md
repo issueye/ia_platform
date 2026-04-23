@@ -291,7 +291,7 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 
 ## 4. Network Capability
 
-Network capability kind 为 `network`，当前 `DefaultHost` 只稳定暴露 HTTP 请求。
+Network capability kind 为 `network`。当前 `DefaultHost` 已稳定暴露 HTTP 请求，并已接入第一轮 handle-based socket ABI：`network.dial/listen/accept/send/recv/close`。
 
 ### 4.1 `network.http_fetch`
 
@@ -338,18 +338,106 @@ Network capability kind 为 `network`，当前 `DefaultHost` 只稳定暴露 HTT
 
 当前 `ValidateHTTPRequest` 会检查 URL、scheme、host、port 和请求体大小。
 
-### 4.3 当前未接入 Network operation
+### 4.3 `network.dial`
 
-`host/network.Provider` 已定义 socket/listen 能力，但 `DefaultHost.Call` 尚未暴露：
+建立 socket 连接并返回句柄。
 
-- `network.dial`
-- `network.listen`
-- `network.accept`
-- `network.send`
-- `network.recv`
-- `network.close`
+参数：
 
-这些操作依赖 handle table、异步 poll 和连接资源管理，后续应和 `OpHostPoll` 一起设计。
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `network` | `string` | 否 | 默认 `tcp` |
+| `host` | `string` | 是 | 目标主机 |
+| `port` | number | 是 | 目标端口 |
+| `timeout_ms` 或 `timeoutMS` | number | 否 | 连接超时毫秒数 |
+
+返回：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `handle` | `uint64` | socket 句柄 ID |
+
+### 4.4 `network.listen`
+
+建立监听句柄。
+
+参数：
+
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `network` | `string` | 否 | 默认 `tcp` |
+| `host` | `string` | 是 | 监听主机 |
+| `port` | number | 是 | 监听端口 |
+| `backlog` | number | 否 | backlog 大小 |
+
+返回：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `handle` | `uint64` | listener 句柄 ID |
+
+### 4.5 `network.accept`
+
+从 listener 句柄接收新连接。
+
+参数：
+
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `handle` | number | 是 | listener 句柄 ID |
+
+返回：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `handle` | `uint64` | 新 socket 句柄 ID |
+
+### 4.6 `network.send`
+
+向 socket 句柄发送数据。
+
+参数：
+
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `handle` | number | 是 | socket 句柄 ID |
+| `data` | `[]byte` 或 `string` | 是 | 发送内容 |
+
+返回：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `n` | `int64` | 实际发送字节数 |
+
+### 4.7 `network.recv`
+
+从 socket 句柄接收数据。
+
+参数：
+
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `handle` | number | 是 | socket 句柄 ID |
+| `size` | number | 否 | 读取上限，默认 4096 |
+
+返回：
+
+| Key | 类型 | 说明 |
+|---|---|---|
+| `data` | `[]byte` | 接收数据 |
+| `n` | `int64` | 实际接收字节数 |
+
+### 4.8 `network.close`
+
+关闭 socket 或 listener 句柄。
+
+参数：
+
+| Key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `handle` | number | 是 | socket 或 listener 句柄 ID |
+
+返回：空 map。
 
 ## 5. 错误语义
 
