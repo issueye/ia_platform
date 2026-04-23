@@ -48,15 +48,16 @@ type Suspension struct {
 }
 
 type capabilityTimeoutProfile struct {
-	HostTimeout     time.Duration
-	WaitTimeout     time.Duration
-	RetryCount      int
-	RetryBackoff    time.Duration
-	RetryMaxBackoff time.Duration
-	RetryMaxElapsed time.Duration
-	RetryMultiplier float64
-	RetryJitter     float64
-	RetryCallOps    []string
+	HostTimeout          time.Duration
+	WaitTimeout          time.Duration
+	RetryCount           int
+	RetryBackoff         time.Duration
+	RetryMaxBackoff      time.Duration
+	RetryMaxElapsed      time.Duration
+	RetryMultiplier      float64
+	RetryJitter          float64
+	RetryCallOps         []string
+	RetryExcludedCallOps []string
 }
 
 func New(mod *module.Module, opts Options) (*VM, error) {
@@ -518,15 +519,16 @@ func (vm *VM) capabilityConfig(kind module.CapabilityKind) map[string]any {
 
 func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTimeoutProfile {
 	profile := capabilityTimeoutProfile{
-		HostTimeout:     vm.options.HostTimeout,
-		WaitTimeout:     vm.options.WaitTimeout,
-		RetryCount:      vm.options.RetryCount,
-		RetryBackoff:    vm.options.RetryBackoff,
-		RetryMaxBackoff: vm.options.RetryMaxBackoff,
-		RetryMaxElapsed: vm.options.RetryMaxElapsed,
-		RetryMultiplier: vm.options.RetryMultiplier,
-		RetryJitter:     vm.options.RetryJitter,
-		RetryCallOps:    append([]string(nil), vm.options.RetryCallOps...),
+		HostTimeout:          vm.options.HostTimeout,
+		WaitTimeout:          vm.options.WaitTimeout,
+		RetryCount:           vm.options.RetryCount,
+		RetryBackoff:         vm.options.RetryBackoff,
+		RetryMaxBackoff:      vm.options.RetryMaxBackoff,
+		RetryMaxElapsed:      vm.options.RetryMaxElapsed,
+		RetryMultiplier:      vm.options.RetryMultiplier,
+		RetryJitter:          vm.options.RetryJitter,
+		RetryCallOps:         append([]string(nil), vm.options.RetryCallOps...),
+		RetryExcludedCallOps: append([]string(nil), vm.options.RetryExcludedCallOps...),
 	}
 	config := vm.capabilityConfig(kind)
 	if len(config) == 0 {
@@ -559,16 +561,29 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	if callOps, ok := readStringSlice(config, "retry_call_ops", "retryCallOps"); ok {
 		profile.RetryCallOps = callOps
 	}
+	if excludedCallOps, ok := readStringSlice(config, "retry_excluded_call_ops", "retryExcludedCallOps"); ok {
+		profile.RetryExcludedCallOps = excludedCallOps
+	}
 	return profile
 }
 
 func (profile capabilityTimeoutProfile) allowsHostCallRetry(opName string) bool {
+	matched := false
 	for _, candidate := range profile.RetryCallOps {
 		if candidate == opName {
-			return true
+			matched = true
+			break
 		}
 	}
-	return false
+	if !matched {
+		return false
+	}
+	for _, candidate := range profile.RetryExcludedCallOps {
+		if candidate == opName {
+			return false
+		}
+	}
+	return true
 }
 
 func readInt(values map[string]any, keys ...string) (int, bool) {
