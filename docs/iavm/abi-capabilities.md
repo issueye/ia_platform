@@ -302,6 +302,7 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - capability `Config.retry_enabled` 可为单个 capability 显式关闭 inherited retry/backoff 策略
 - capability `Config.retry_call_enabled` 可仅关闭单个 capability 的 `host.call` 自动重试，而保留 `poll/wait` retry
 - capability `Config.retry_poll_enabled` 可仅关闭单个 capability 的 `poll/wait` 自动重试，而保留 `host.call` retry
+- capability `Config.retry_wait_enabled` 可仅关闭单个 capability 的 `wait(handle)` 自动重试，而保留 `poll` retry
 - capability `Config.retry_count` / `Config.retry_backoff_ms` 可覆盖默认 retry/backoff
 - capability `Config.retry_multiplier` / `Config.retry_backoff_max_ms` / `Config.retry_max_elapsed_ms` / `Config.retry_jitter` 可覆盖默认 backoff 曲线、总重试时间预算与抖动策略
 - capability `Config.retry_call_ops` 可覆盖默认 `host.call` retry allowlist
@@ -336,6 +337,8 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - 当 capability 显式设置 `retry_enabled = false` 时，该 capability 的 `poll/wait` 与 allowlisted `host.call` 都会回退为单次尝试
 - 当 capability 显式设置 `retry_call_enabled = false` 时，只关闭该 capability 的 `host.call` 自动重试；`poll/wait` 仍沿用其 retry/backoff profile
 - 当 capability 显式设置 `retry_poll_enabled = false` 时，只关闭该 capability 的 `poll/wait` 自动重试；allowlisted `host.call` 仍沿用其 retry/backoff 与 allow/exclude policy
+- 当 capability 显式设置 `retry_wait_enabled = false` 时，只关闭该 capability 的 `wait(handle)` 自动重试；`poll` 与 allowlisted `host.call` 仍沿用各自的 retry policy
+- 为兼容 `0.1.23` 之前的行为：若显式设置了 `retry_poll_enabled`，但未设置 `retry_wait_enabled`，则 `wait(handle)` 默认继续跟随 `retry_poll_enabled` 的值
 - 默认 backoff 仍为确定性退避；仅当 `RetryJitter` 或 `Config.retry_jitter` 大于 `0` 时，runtime 才会在 base backoff 周围加入有界随机抖动
 - 当前 jitter 使用对称区间策略：`factor = 1 - jitter + 2 * jitter * random`，并继续受 `retry_backoff_max_ms` 上限约束
 - runtime 当前会在两类错误上触发 retry：`context deadline exceeded`，以及宿主通过 `iacommon/pkg/host/api.MarkRetryable(err)` 显式标记的 retryable error
