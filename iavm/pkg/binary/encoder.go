@@ -129,6 +129,13 @@ func encodeFunctionSection(m *module.Module) []byte {
 			}
 			binary.Write(&buf, binary.LittleEndian, fn.ThisLocal)
 		}
+		if m.FeatureFlags&module.FeatureFlagFunctionAsync != 0 {
+			if fn.Async {
+				buf.WriteByte(1)
+			} else {
+				buf.WriteByte(0)
+			}
+		}
 	}
 	return buf.Bytes()
 }

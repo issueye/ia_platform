@@ -1995,3 +1995,33 @@ func TestRunCLIInheritanceExampleRegression(t *testing.T) {
 		}
 	}
 }
+
+func TestRunCLIAsyncLoopExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "async_loop.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "async_loop.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm async_loop.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm async_loop.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm async_loop.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "sumOdd: 16") {
+		t.Fatalf("async_loop.ia output missing 'sumOdd: 16': %q", runOutput)
+	}
+}

@@ -2,7 +2,10 @@ package module
 
 import "iavm/pkg/core"
 
-const FeatureFlagFunctionThisBindings uint64 = 1 << 0
+const (
+	FeatureFlagFunctionThisBindings uint64 = 1 << 0
+	FeatureFlagFunctionAsync        uint64 = 1 << 1
+)
 
 type Module struct {
 	Magic        string
@@ -37,6 +40,7 @@ type Function struct {
 	Captures     []uint32 // outer local indices captured by this closure
 	HasThis      bool
 	ThisLocal    uint32
+	Async        bool
 }
 
 type Global struct {

@@ -58,4 +58,5 @@ const (
 	OpNewInstance
 	OpSuper
 	OpSuperCall
+	OpAwait
 )

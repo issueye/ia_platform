@@ -431,7 +431,7 @@ func stackEffect(inst core.Instruction, m *module.Module) (int, int, error) {
 		return 1, 0, nil
 	case core.OpHostCall:
 		return int(inst.A) + 1, 1, nil
-	case core.OpNeg, core.OpNot, core.OpTypeof:
+	case core.OpNeg, core.OpNot, core.OpTypeof, core.OpAwait:
 		return 1, 1, nil
 	case core.OpDup:
 		return 1, 2, nil
@@ -665,7 +665,7 @@ func isValidValueKind(kind core.ValueKind) bool {
 	switch kind {
 	case core.ValueNull, core.ValueBool, core.ValueI64, core.ValueF64,
 		core.ValueString, core.ValueBytes, core.ValueArrayRef,
-		core.ValueObjectRef, core.ValueFuncRef, core.ValueHostHandle:
+		core.ValueObjectRef, core.ValueFuncRef, core.ValueHostHandle, core.ValuePromise:
 		return true
 	default:
 		return false
@@ -673,7 +673,7 @@ func isValidValueKind(kind core.ValueKind) bool {
 }
 
 func isValidOpcode(op core.OpCode) bool {
-	return op <= core.OpSuperCall
+	return op <= core.OpAwait
 }
 
 func verifyStackDepth(fn *module.Function) error {
@@ -731,7 +731,7 @@ func stackDelta(inst core.Instruction) int {
 		core.OpAnd, core.OpOr, core.OpIndex:
 		return -1
 
-	case core.OpNeg, core.OpNot, core.OpTypeof, core.OpObjectKeys:
+	case core.OpNeg, core.OpNot, core.OpTypeof, core.OpObjectKeys, core.OpAwait:
 		return 0
 
 	case core.OpJumpIfFalse, core.OpJumpIfTrue:

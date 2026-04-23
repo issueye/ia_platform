@@ -139,6 +139,9 @@ func decodeFunctionSection(mod *module.Module, d *decoder) error {
 				mod.Functions[i].HasThis = d.readByte() == 1
 				mod.Functions[i].ThisLocal = d.readUint32()
 			}
+			if mod.FeatureFlags&module.FeatureFlagFunctionAsync != 0 && d.pos < len(d.data) {
+				mod.Functions[i].Async = d.readByte() == 1
+			}
 		}
 	}
 	return nil

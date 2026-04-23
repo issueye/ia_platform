@@ -125,7 +125,9 @@ func LowerToModule(input any) (*module.Module, error) {
 	for _, fn := range mod.Functions {
 		if fn.HasThis {
 			mod.FeatureFlags |= module.FeatureFlagFunctionThisBindings
-			break
+		}
+		if fn.Async {
+			mod.FeatureFlags |= module.FeatureFlagFunctionAsync
 		}
 	}
 
@@ -280,6 +282,7 @@ func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32,
 	fn := module.Function{
 		Name:      ft.Name,
 		TypeIndex: 0,
+		Async:     ft.Async,
 	}
 
 	localMap, nextLocalIdx := buildLocalMap(ft)
@@ -781,11 +784,13 @@ func lowerInstructions(ialangInsts []bytecode.Instruction, funcMap map[int]int) 
 			iavmInst.Op = core.OpJumpIfNotNullish
 			iavmInst.A = uint32(inst.A)
 
+		case bytecode.OpAwait:
+			iavmInst.Op = core.OpAwait
+
 		case bytecode.OpImportNamespace, bytecode.OpImportDynamic,
 			bytecode.OpExportName, bytecode.OpExportAs, bytecode.OpExportDefault,
 			bytecode.OpExportAll,
-			bytecode.OpSpreadArray, bytecode.OpSpreadObject, bytecode.OpSpreadCall,
-			bytecode.OpAwait:
+			bytecode.OpSpreadArray, bytecode.OpSpreadObject, bytecode.OpSpreadCall:
 			// Unsupported in minimal iavm, use Nop
 			iavmInst.Op = core.OpNop
 

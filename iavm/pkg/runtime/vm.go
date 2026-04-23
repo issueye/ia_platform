@@ -151,3 +151,29 @@ func (vm *VM) capabilityConfig(kind module.CapabilityKind) map[string]any {
 	}
 	return nil
 }
+
+func (vm *VM) runFunctionSync(fnIdx uint32, args []core.Value, fnRef core.Value) (core.Value, error) {
+	child := &VM{
+		mod:              vm.mod,
+		options:          vm.options,
+		stack:            NewStack(256),
+		globals:          vm.globals,
+		functions:        vm.functions,
+		handles:          vm.handles,
+		capabilityIDs:    vm.capabilityIDs,
+		lastCapabilityID: vm.lastCapabilityID,
+		builtins:         vm.builtins,
+	}
+	if err := child.pushCallFrame(fnIdx, args, fnRef); err != nil {
+		return core.Value{}, err
+	}
+	if err := Interpret(child, fnIdx); err != nil {
+		return core.Value{}, err
+	}
+	vm.capabilityIDs = child.capabilityIDs
+	vm.lastCapabilityID = child.lastCapabilityID
+	if child.stack.Size() == 0 {
+		return core.Value{Kind: core.ValueNull}, nil
+	}
+	return child.stack.Pop(), nil
+}

@@ -22,12 +22,15 @@ const (
 )
 
 func Interpret(vm *VM, entryFuncIndex uint32) error {
-	if entryFuncIndex >= uint32(len(vm.mod.Functions)) {
-		return fmt.Errorf("function index %d out of range", entryFuncIndex)
-	}
+	var frame *Frame
+	if len(vm.frames) == 0 {
+		if entryFuncIndex >= uint32(len(vm.mod.Functions)) {
+			return fmt.Errorf("function index %d out of range", entryFuncIndex)
+		}
 
-	frame := NewFrame(entryFuncIndex, &vm.mod.Functions[entryFuncIndex], uint32(vm.stack.Size()))
-	vm.frames = append(vm.frames, frame)
+		frame = NewFrame(entryFuncIndex, &vm.mod.Functions[entryFuncIndex], uint32(vm.stack.Size()))
+		vm.frames = append(vm.frames, frame)
+	}
 
 	for len(vm.frames) > 0 {
 		frame = vm.frames[len(vm.frames)-1]
@@ -265,12 +268,22 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 				return fmt.Errorf("function index %d out of range", fnIdx)
 			}
 			targetFn := &vm.mod.Functions[fnIdx]
-			newFrame := NewFrame(fnIdx, targetFn, uint32(vm.stack.Size()))
 			argCount := int(inst.B)
+			args := make([]core.Value, argCount)
 			for i := argCount - 1; i >= 0; i-- {
-				if i < len(newFrame.Locals) {
-					newFrame.Locals[i] = vm.stack.Pop()
+				args[i] = vm.stack.Pop()
+			}
+			if targetFn.Async {
+				result, err := vm.runFunctionSync(fnIdx, args, core.Value{Kind: core.ValueFuncRef, Raw: fnIdx})
+				if err != nil {
+					return err
 				}
+				vm.stack.Push(resolvedPromiseValue(result))
+				break
+			}
+			newFrame := NewFrame(fnIdx, targetFn, uint32(vm.stack.Size()))
+			for i := 0; i < argCount && i < len(newFrame.Locals); i++ {
+				newFrame.Locals[i] = args[i]
 			}
 			vm.frames = append(vm.frames, newFrame)
 		} else {
@@ -599,6 +612,14 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 		vm.stack.Push(result)
 
+	case core.OpAwait:
+		val := vm.stack.Pop()
+		resolved, err := awaitValue(val)
+		if err != nil {
+			return err
+		}
+		vm.stack.Push(resolved)
+
 	default:
 		return fmt.Errorf("unimplemented opcode: %v", inst.Op)
 	}
@@ -638,6 +659,14 @@ func (vm *VM) invokeCallable(fnRef core.Value, args []core.Value) error {
 		return nil
 	default:
 		return fmt.Errorf("cannot call value of kind %v", fnRef.Kind)
+	}
+	if int(fnIdx) < len(vm.mod.Functions) && vm.mod.Functions[fnIdx].Async {
+		result, err := vm.runFunctionSync(fnIdx, args, fnRef)
+		if err != nil {
+			return err
+		}
+		vm.stack.Push(resolvedPromiseValue(result))
+		return nil
 	}
 	return vm.pushCallFrame(fnIdx, args, fnRef)
 }
@@ -1031,6 +1060,8 @@ func coreValueToHostAny(v core.Value) any {
 		return nil
 	case core.ValueFuncRef:
 		return map[string]any{"kind": "func_ref", "index": v.Raw}
+	case core.ValuePromise:
+		return nil
 	default:
 		return v.Raw
 	}
@@ -1330,6 +1361,8 @@ func typeOfValue(a core.Value) string {
 		return "function"
 	case core.ValueHostHandle:
 		return "handle"
+	case core.ValuePromise:
+		return "promise"
 	default:
 		return "unknown"
 	}
@@ -1350,6 +1383,12 @@ func valueToString(a core.Value) string {
 		return fmt.Sprintf("%v", a.Raw.(float64))
 	case core.ValueString:
 		return a.Raw.(string)
+	case core.ValuePromise:
+		state, ok := a.Raw.(*promiseState)
+		if ok && state != nil && state.Done {
+			return "[Promise resolved]"
+		}
+		return "[Promise pending]"
 	default:
 		return fmt.Sprintf("%v", a.Kind)
 	}
