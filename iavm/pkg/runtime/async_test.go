@@ -316,6 +316,65 @@ func TestRunUntilSettledResolvesPendingPromise(t *testing.T) {
 	}
 }
 
+func TestRunUntilSettledHonorsContextTimeout(t *testing.T) {
+	host := &pollOnlyHost{
+		pollResults: []api.PollResult{
+			{Done: false, Value: map[string]any{"ready": false}},
+		},
+	}
+
+	mod := moduleForAsyncTest([]any{int64(17)}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		WaitInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	err = vm.RunUntilSettled(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunUntilSettled error = %v, want deadline exceeded", err)
+	}
+}
+
+func TestRunUntilSettledHonorsMaxDuration(t *testing.T) {
+	host := &pollOnlyHost{
+		pollResults: []api.PollResult{
+			{Done: false, Value: map[string]any{"ready": false}},
+		},
+	}
+
+	mod := moduleForAsyncTest([]any{int64(19)}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		WaitInterval: time.Millisecond,
+		MaxDuration:  5 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	err = vm.RunUntilSettled(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunUntilSettled error = %v, want deadline exceeded", err)
+	}
+}
+
 func moduleForAsyncTest(constants []any, code []core.Instruction) *module.Module {
 	return &module.Module{
 		Magic:     "IAVM",

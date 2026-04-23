@@ -1299,6 +1299,48 @@ func TestRunUntilSettledFallsBackWithoutWaiter(t *testing.T) {
 	}
 }
 
+func TestRunUntilSettledRespectsContextCancellation(t *testing.T) {
+	host := &pollOnlyHostCLI{
+		pollResults: []api.PollResult{
+			{Done: false, Value: map[string]any{"ready": false}},
+		},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Constants: []any{int64(25)},
+		Types:     []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := runtimepkg.New(mod, runtimepkg.Options{
+		Host:         host,
+		WaitInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("runtime.New failed: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	err = vm.RunUntilSettled(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunUntilSettled error = %v, want deadline exceeded", err)
+	}
+}
+
 func TestRunCLIVerifyIavmFunctionLimitExceeded(t *testing.T) {
 	dir := t.TempDir()
 	modulePath := filepath.Join(dir, "too-many-functions.iavm")

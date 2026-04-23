@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"context"
 	"fmt"
 	"iacommon/pkg/host/api"
 	"iavm/pkg/core"
@@ -33,6 +32,9 @@ func Interpret(vm *VM, entryFuncIndex uint32) error {
 	}
 
 	for len(vm.frames) > 0 {
+		if err := vm.hostContext().Err(); err != nil {
+			return err
+		}
 		frame = vm.frames[len(vm.frames)-1]
 		fn := &vm.mod.Functions[frame.FunctionIndex]
 
@@ -388,7 +390,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			return fmt.Errorf("capability import kind must reference a string constant")
 		}
 		config := vm.capabilityConfig(module.CapabilityKind(capKind))
-		cap, err := vm.options.Host.AcquireCapability(context.Background(), api.AcquireRequest{
+		cap, err := vm.options.Host.AcquireCapability(vm.hostContext(), api.AcquireRequest{
 			Kind:   api.CapabilityKind(capKind),
 			Config: config,
 		})
@@ -425,7 +427,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			Args:         callArgs,
 		}
 
-		result, err := vm.options.Host.Call(context.Background(), req)
+		result, err := vm.options.Host.Call(vm.hostContext(), req)
 		if err != nil {
 			return fmt.Errorf("host.call failed: %w", err)
 		}
@@ -445,7 +447,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if err != nil {
 			return err
 		}
-		result, err := vm.options.Host.Poll(context.Background(), handleID)
+		result, err := vm.options.Host.Poll(vm.hostContext(), handleID)
 		if err != nil {
 			return fmt.Errorf("host.poll failed: %w", err)
 		}

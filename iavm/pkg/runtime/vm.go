@@ -21,6 +21,8 @@ type BuiltinFunc func(args []core.Value) core.Value
 type VM struct {
 	mod              *module.Module
 	options          Options
+	runCtx           context.Context
+	runCancel        context.CancelFunc
 	stack            *Stack
 	globals          []core.Value
 	functions        []CompiledFunction
@@ -81,6 +83,11 @@ func (vm *VM) GetBuiltin(name string) (BuiltinFunc, bool) {
 }
 
 func (vm *VM) Run() error {
+	ownsContext := vm.runCtx == nil
+	if ownsContext {
+		vm.beginRunContext(context.Background())
+		defer vm.endRunContext()
+	}
 	vm.suspension = nil
 	// Find entry function
 	var entryIdx *uint32
@@ -203,6 +210,8 @@ func (vm *VM) WaitSuspension(ctx context.Context) error {
 }
 
 func (vm *VM) RunUntilSettled(ctx context.Context) error {
+	vm.beginRunContext(ctx)
+	defer vm.endRunContext()
 	if err := vm.Run(); err != nil {
 		if !errors.Is(err, ErrPromisePending) {
 			return err
@@ -212,7 +221,7 @@ func (vm *VM) RunUntilSettled(ctx context.Context) error {
 	}
 
 	for {
-		if err := vm.WaitSuspension(ctx); err != nil {
+		if err := vm.WaitSuspension(vm.hostContext()); err != nil {
 			if errors.Is(err, ErrPromisePending) {
 				continue
 			}
@@ -253,6 +262,36 @@ func (vm *VM) waitSuspensionByPolling(ctx context.Context, state *promiseState) 
 		case <-timer.C:
 		}
 	}
+}
+
+func (vm *VM) hostContext() context.Context {
+	if vm.runCtx != nil {
+		return vm.runCtx
+	}
+	return context.Background()
+}
+
+func (vm *VM) beginRunContext(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if vm.runCancel != nil {
+		vm.runCancel()
+		vm.runCancel = nil
+	}
+	if vm.options.MaxDuration > 0 {
+		vm.runCtx, vm.runCancel = context.WithTimeout(ctx, vm.options.MaxDuration)
+		return
+	}
+	vm.runCtx = ctx
+}
+
+func (vm *VM) endRunContext() {
+	if vm.runCancel != nil {
+		vm.runCancel()
+		vm.runCancel = nil
+	}
+	vm.runCtx = nil
 }
 
 func (vm *VM) resolveStringConstant(fn *module.Function, index uint32) (string, bool) {
@@ -328,7 +367,7 @@ func (vm *VM) resolveSuspendedValue(v core.Value) (core.Value, error) {
 		if vm.options.Host == nil {
 			return core.Value{}, fmt.Errorf("no host configured for suspended poll")
 		}
-		result, err := vm.options.Host.Poll(context.Background(), state.PollHandleID)
+		result, err := vm.options.Host.Poll(vm.hostContext(), state.PollHandleID)
 		if err != nil {
 			return core.Value{}, fmt.Errorf("host.poll failed during resume: %w", err)
 		}
