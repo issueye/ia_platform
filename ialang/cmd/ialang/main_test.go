@@ -549,6 +549,48 @@ func TestRunCLIVerifyIavmCapabilityDenied(t *testing.T) {
 	}
 }
 
+func TestRunCLIVerifyIavmHostOperationRequiresDeclaredCapability(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "host-op-capability.iavm")
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "verify-iavm", modulePath}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("runCLI verify-iavm host operation capability code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "host operation \"fs.read_file\" requires capability \"fs\"") {
+		t.Fatalf("stderr = %q, want host operation capability mismatch", stderr.String())
+	}
+}
+
 func TestRunCLIVerifyIavmFunctionLimitExceeded(t *testing.T) {
 	dir := t.TempDir()
 	modulePath := filepath.Join(dir, "too-many-functions.iavm")
