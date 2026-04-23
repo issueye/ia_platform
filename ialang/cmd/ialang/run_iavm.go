@@ -11,7 +11,11 @@ import (
 )
 
 func executeRunIavmCommand(cmd cliCommand, stderr io.Writer) error {
-	mod, err := loadAndVerifyIavmModule(cmd.file, buildIavmVerifyOptions(cmd, true))
+	opts, err := buildIavmVerifyOptions(cmd, true)
+	if err != nil {
+		return err
+	}
+	mod, err := loadAndVerifyIavmModule(cmd.file, opts)
 	if err != nil {
 		return err
 	}

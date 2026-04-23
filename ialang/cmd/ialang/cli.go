@@ -24,6 +24,7 @@ type cliCommand struct {
 	maxLocals           int
 	maxStack            int
 	allowedCapabilities []module.CapabilityKind
+	capabilityAllowlistSet bool
 	helpShown           bool
 }
 
@@ -365,6 +366,7 @@ func parseIavmVerifyOption(command string, cmd *cliCommand, option string, args 
 		if err != nil {
 			return false, err
 		}
+		cmd.capabilityAllowlistSet = true
 		cmd.allowedCapabilities = append(cmd.allowedCapabilities, capability)
 		return true, nil
 	default:

@@ -6,6 +6,26 @@ import (
 	"iavm/pkg/module"
 )
 
+type VerifyProfile string
+
+const (
+	VerifyProfileDefault VerifyProfile = "default"
+	VerifyProfileStrict  VerifyProfile = "strict"
+	VerifyProfileSandbox VerifyProfile = "sandbox"
+)
+
+type VerifyPolicyOverrides struct {
+	RequireEntry *bool
+
+	MaxFunctions           int
+	MaxConstants           int
+	MaxCodeSizePerFunction int
+	MaxLocalsPerFunction   int
+	MaxStackPerFunction    int
+	AllowedCapabilities    []module.CapabilityKind
+	CapabilityAllowlistSet bool
+}
+
 type VerifyOptions struct {
 	RequireEntry bool
 	AllowCustom  bool
@@ -16,6 +36,63 @@ type VerifyOptions struct {
 	MaxLocalsPerFunction   int
 	MaxStackPerFunction    int
 	AllowedCapabilities    []module.CapabilityKind
+	CapabilityAllowlistSet bool
+}
+
+func BuildVerifyOptions(profile VerifyProfile, overrides VerifyPolicyOverrides) (VerifyOptions, error) {
+	opts := VerifyOptions{}
+
+	switch profile {
+	case "", VerifyProfileDefault:
+	case VerifyProfileStrict:
+		opts.RequireEntry = true
+	case VerifyProfileSandbox:
+		opts.RequireEntry = true
+		opts.MaxFunctions = 128
+		opts.MaxConstants = 512
+		opts.MaxCodeSizePerFunction = 4096
+		opts.MaxLocalsPerFunction = 64
+		opts.MaxStackPerFunction = 128
+		opts.CapabilityAllowlistSet = true
+		opts.AllowedCapabilities = []module.CapabilityKind{}
+	default:
+		return VerifyOptions{}, fmt.Errorf("unsupported verify profile %q", profile)
+	}
+
+	if overrides.RequireEntry != nil {
+		opts.RequireEntry = *overrides.RequireEntry
+	}
+	if overrides.MaxFunctions > 0 {
+		opts.MaxFunctions = overrides.MaxFunctions
+	}
+	if overrides.MaxConstants > 0 {
+		opts.MaxConstants = overrides.MaxConstants
+	}
+	if overrides.MaxCodeSizePerFunction > 0 {
+		opts.MaxCodeSizePerFunction = overrides.MaxCodeSizePerFunction
+	}
+	if overrides.MaxLocalsPerFunction > 0 {
+		opts.MaxLocalsPerFunction = overrides.MaxLocalsPerFunction
+	}
+	if overrides.MaxStackPerFunction > 0 {
+		opts.MaxStackPerFunction = overrides.MaxStackPerFunction
+	}
+	if overrides.CapabilityAllowlistSet {
+		opts.CapabilityAllowlistSet = true
+		opts.AllowedCapabilities = append([]module.CapabilityKind(nil), overrides.AllowedCapabilities...)
+	}
+
+	return opts, nil
+}
+
+func VerifyOptionsProfileName(profile VerifyProfile, strict bool) string {
+	if strict && (profile == "" || profile == VerifyProfileDefault) {
+		return string(VerifyProfileStrict)
+	}
+	if profile != "" {
+		return string(profile)
+	}
+	return string(VerifyProfileDefault)
 }
 
 func VerifyModule(m *module.Module, opts VerifyOptions) (*VerifyResult, error) {
@@ -422,7 +499,7 @@ func verifyCapabilities(m *module.Module, opts VerifyOptions) error {
 		if cap.Kind != module.CapabilityFS && cap.Kind != module.CapabilityNetwork {
 			return fmt.Errorf("capability[%d]: invalid kind %q", i, cap.Kind)
 		}
-		if len(allowed) > 0 && !allowed[cap.Kind] {
+		if opts.CapabilityAllowlistSet && !allowed[cap.Kind] {
 			return fmt.Errorf("capability[%d]: kind %q is not allowed", i, cap.Kind)
 		}
 	}

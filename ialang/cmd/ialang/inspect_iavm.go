@@ -57,7 +57,11 @@ func executeInspectIavmCommand(cmd cliCommand, stdout, stderr io.Writer) error {
 }
 
 func inspectVerifyModule(mod *module.Module, cmd cliCommand, stdout io.Writer) error {
-	result, err := binary.VerifyModule(mod, buildIavmVerifyOptions(cmd, false))
+	opts, err := buildIavmVerifyOptions(cmd, false)
+	if err != nil {
+		return err
+	}
+	result, err := binary.VerifyModule(mod, opts)
 	if err != nil {
 		return fmt.Errorf("verify module error: %w", err)
 	}
@@ -70,14 +74,7 @@ func inspectVerifyModule(mod *module.Module, cmd cliCommand, stdout io.Writer) e
 }
 
 func inspectVerifyMode(cmd cliCommand) string {
-	mode := "default"
-	if cmd.profile != "" {
-		mode = cmd.profile
-	}
-	if cmd.strict && mode == "default" {
-		mode = "strict"
-	}
-	return mode
+	return binary.VerifyOptionsProfileName(binary.VerifyProfile(cmd.profile), cmd.strict)
 }
 
 func inspectEntryName(mod *module.Module) string {
