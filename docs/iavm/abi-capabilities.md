@@ -286,6 +286,8 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - 若 `PollResult.Done == false`，`await host.poll(handle)` 会让 VM 进入 suspension
 - `ResumeSuspension()` 会再次执行 `Host.Poll(handle)`；当结果变为 done 后继续解释执行
 - `WaitSuspension(ctx)` 会优先调用宿主可选 `Wait(handle)` 能力，wait 完成后再恢复执行
+- 若宿主未实现 `Wait(handle)`，runtime 会回退到按 `WaitInterval` 轮询 `Host.Poll(handle)`
+- `RunUntilSettled(ctx)` 会统一执行 `run -> wait -> resume` 闭环，直到模块完成或 context 结束
 - 当前 wakeup 模型仍是最小实现：宿主只需保证 wait 最终返回 done 或 context 结束，不要求主动事件推送协议
 
 当前 Promise resolve 后的 poll 结果对象包含以下字段：
@@ -303,7 +305,7 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 
 - `Host.Poll(handle)` 负责“查询当前状态”
 - `Host.Wait(handle)` 若实现，则负责“阻塞直到值得再次恢复”
-- CLI `run-iavm` 当前已在遇到 pending suspension 时自动调用 wait/resume 闭环
+- runtime 负责 settled 主循环；CLI `run-iavm` 当前直接复用 runtime 入口
 
 ## 4. Network Capability
 
