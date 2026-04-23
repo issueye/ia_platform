@@ -46,8 +46,10 @@ type Suspension struct {
 }
 
 type capabilityTimeoutProfile struct {
-	HostTimeout time.Duration
-	WaitTimeout time.Duration
+	HostTimeout  time.Duration
+	WaitTimeout  time.Duration
+	RetryCount   int
+	RetryBackoff time.Duration
 }
 
 func New(mod *module.Module, opts Options) (*VM, error) {
@@ -196,12 +198,15 @@ func (vm *VM) WaitSuspension(ctx context.Context) error {
 
 	waiter, ok := vm.options.Host.(api.Waiter)
 	if ok {
-		waitCtx, cancel := vm.hostOperationContext(ctx, vm.options.WaitTimeout)
+		waitTimeout := vm.options.WaitTimeout
 		if state.WaitTimeout > 0 {
-			waitCtx, cancel = vm.hostOperationContext(ctx, state.WaitTimeout)
+			waitTimeout = state.WaitTimeout
 		}
-		result, err := waiter.Wait(waitCtx, state.PollHandleID)
-		cancel()
+		result, err := vm.retryPollLike(ctx, state.RetryCount, state.RetryBackoff, func() (api.PollResult, error) {
+			waitCtx, cancel := vm.hostOperationContext(ctx, waitTimeout)
+			defer cancel()
+			return waiter.Wait(waitCtx, state.PollHandleID)
+		})
 		if err != nil {
 			return err
 		}
@@ -253,9 +258,11 @@ func (vm *VM) waitSuspensionByPolling(ctx context.Context, state *promiseState) 
 		if state.HostTimeout > 0 {
 			pollTimeout = state.HostTimeout
 		}
-		pollCtx, cancel := vm.hostOperationContext(ctx, pollTimeout)
-		result, err := vm.options.Host.Poll(pollCtx, state.PollHandleID)
-		cancel()
+		result, err := vm.retryPollLike(ctx, state.RetryCount, state.RetryBackoff, func() (api.PollResult, error) {
+			pollCtx, cancel := vm.hostOperationContext(ctx, pollTimeout)
+			defer cancel()
+			return vm.options.Host.Poll(pollCtx, state.PollHandleID)
+		})
 		if err != nil {
 			return fmt.Errorf("host.poll failed during wait: %w", err)
 		}
@@ -297,6 +304,52 @@ func (vm *VM) hostOperationContext(base context.Context, timeout time.Duration) 
 		return base, func() {}
 	}
 	return context.WithTimeout(base, timeout)
+}
+
+func (vm *VM) retryPollLike(ctx context.Context, retryCount int, retryBackoff time.Duration, op func() (api.PollResult, error)) (api.PollResult, error) {
+	attempts := retryCount + 1
+	if attempts <= 0 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		result, err := op()
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if !vm.shouldRetryPollLike(ctx, err) || attempt == attempts-1 {
+			return api.PollResult{}, err
+		}
+		if err := vm.sleepBackoff(ctx, retryBackoff); err != nil {
+			return api.PollResult{}, err
+		}
+	}
+	return api.PollResult{}, lastErr
+}
+
+func (vm *VM) shouldRetryPollLike(ctx context.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return false
+	}
+	return errors.Is(err, context.DeadlineExceeded)
+}
+
+func (vm *VM) sleepBackoff(ctx context.Context, backoff time.Duration) error {
+	if backoff <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (vm *VM) beginRunContext(ctx context.Context) {
@@ -358,8 +411,10 @@ func (vm *VM) capabilityConfig(kind module.CapabilityKind) map[string]any {
 
 func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTimeoutProfile {
 	profile := capabilityTimeoutProfile{
-		HostTimeout: vm.options.HostTimeout,
-		WaitTimeout: vm.options.WaitTimeout,
+		HostTimeout:  vm.options.HostTimeout,
+		WaitTimeout:  vm.options.WaitTimeout,
+		RetryCount:   vm.options.RetryCount,
+		RetryBackoff: vm.options.RetryBackoff,
 	}
 	config := vm.capabilityConfig(kind)
 	if len(config) == 0 {
@@ -371,7 +426,38 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	if timeout, ok := readDurationMS(config, "wait_timeout_ms", "waitTimeoutMS"); ok {
 		profile.WaitTimeout = timeout
 	}
+	if retryCount, ok := readInt(config, "retry_count", "retryCount"); ok {
+		profile.RetryCount = retryCount
+	}
+	if backoff, ok := readDurationMS(config, "retry_backoff_ms", "retryBackoffMS"); ok {
+		profile.RetryBackoff = backoff
+	}
 	return profile
+}
+
+func readInt(values map[string]any, keys ...string) (int, bool) {
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok || value == nil {
+			continue
+		}
+		switch typed := value.(type) {
+		case int:
+			return typed, true
+		case int64:
+			return int(typed), true
+		case uint64:
+			return int(typed), true
+		case float64:
+			return int(typed), true
+		case string:
+			parsed, err := strconv.ParseInt(typed, 10, 64)
+			if err == nil {
+				return int(parsed), true
+			}
+		}
+	}
+	return 0, false
 }
 
 func readDurationMS(values map[string]any, keys ...string) (time.Duration, bool) {
@@ -440,9 +526,15 @@ func (vm *VM) resolveSuspendedValue(v core.Value) (core.Value, error) {
 		if vm.options.Host == nil {
 			return core.Value{}, fmt.Errorf("no host configured for suspended poll")
 		}
-		pollCtx, cancel := vm.hostOperationContext(vm.hostContext(), vm.options.HostTimeout)
-		result, err := vm.options.Host.Poll(pollCtx, state.PollHandleID)
-		cancel()
+		pollTimeout := vm.options.HostTimeout
+		if state.HostTimeout > 0 {
+			pollTimeout = state.HostTimeout
+		}
+		result, err := vm.retryPollLike(vm.hostContext(), state.RetryCount, state.RetryBackoff, func() (api.PollResult, error) {
+			pollCtx, cancel := vm.hostOperationContext(vm.hostContext(), pollTimeout)
+			defer cancel()
+			return vm.options.Host.Poll(pollCtx, state.PollHandleID)
+		})
 		if err != nil {
 			return core.Value{}, fmt.Errorf("host.poll failed during resume: %w", err)
 		}

@@ -11,6 +11,8 @@ type Options struct {
 	MaxDuration   time.Duration
 	HostTimeout   time.Duration
 	WaitTimeout   time.Duration
+	RetryCount    int
+	RetryBackoff  time.Duration
 	WaitInterval  time.Duration
 	Host          api.Host
 	EnableTracing bool

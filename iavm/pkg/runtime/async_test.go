@@ -480,6 +480,101 @@ func TestRunUntilSettledUsesCapabilityWaitTimeoutProfile(t *testing.T) {
 	}
 }
 
+func TestRunUntilSettledRetriesPollTimeout(t *testing.T) {
+	host := newMockHost()
+	host.pollDeadlineFailures = 1
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := moduleForAsyncTest([]any{int64(33), "ready"}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpGetProp, A: 1},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		HostTimeout:  5 * time.Millisecond,
+		RetryCount:   1,
+		RetryBackoff: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled failed: %v", err)
+	}
+	if len(host.pollLog) < 2 {
+		t.Fatalf("expected poll retry attempts, got %#v", host.pollLog)
+	}
+}
+
+func TestRunUntilSettledRetriesWaitTimeoutWithCapabilityProfile(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitDeadlineFailures = 1
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"network", int64(35), "ready"},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"wait_timeout_ms":  int64(5),
+					"retry_count":      int64(1),
+					"retry_backoff_ms": int64(1),
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 2},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled failed: %v", err)
+	}
+	if len(host.waitLog) < 2 {
+		t.Fatalf("expected wait retry attempts, got %#v", host.waitLog)
+	}
+}
+
 func moduleForAsyncTest(constants []any, code []core.Instruction) *module.Module {
 	return &module.Module{
 		Magic:     "IAVM",
