@@ -1600,3 +1600,103 @@ func TestRunCLIOperatorsExampleRegression(t *testing.T) {
 		t.Fatalf("operators.ia output missing completion marker: %q", runOutput)
 	}
 }
+
+func TestRunCLIDataExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "data.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "data.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm data.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm data.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm data.ia sandbox failed: %s", stderr.String())
+	}
+	t.Logf("data.ia output:\n%s", runOutput)
+	if !strings.Contains(runOutput, "user.name: alice") {
+		t.Fatalf("data.ia output missing 'user.name: alice': %q", runOutput)
+	}
+}
+
+func TestRunCLIBitwiseExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "bitwise.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "bitwise.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm bitwise.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm bitwise.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm bitwise.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "a & b = 8") {
+		t.Fatalf("bitwise.ia output missing 'a & b = 8': %q", runOutput)
+	}
+	if !strings.Contains(runOutput, "=== bitwise operator tests done ===") {
+		t.Fatalf("bitwise.ia output missing completion marker: %q", runOutput)
+	}
+}
+
+func TestRunCLIClosureExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "closure.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "closure.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm closure.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm closure.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm closure.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "c1-1: 1") {
+		t.Fatalf("closure.ia output missing 'c1-1: 1': %q", runOutput)
+	}
+	if !strings.Contains(runOutput, "c1-3: 3") {
+		t.Fatalf("closure.ia output missing 'c1-3: 3': %q", runOutput)
+	}
+	if !strings.Contains(runOutput, "c2-1: 11") {
+		t.Fatalf("closure.ia output missing 'c2-1: 11': %q", runOutput)
+	}
+}

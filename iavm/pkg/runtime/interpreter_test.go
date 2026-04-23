@@ -953,6 +953,84 @@ func TestInterpret_Shr(t *testing.T) {
 	}
 }
 
+func TestInterpret_BitAnd_F64(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{float64(12), float64(10)},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1},
+				{Op: core.OpBitAnd}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 8 {
+		t.Fatalf("expected 8, got %v", val)
+	}
+}
+
+func TestInterpret_BitOr_F64(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{float64(12), float64(10)},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1},
+				{Op: core.OpBitOr}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 14 {
+		t.Fatalf("expected 14, got %v", val)
+	}
+}
+
+func TestInterpret_Shl_F64(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{float64(4), float64(2)},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1},
+				{Op: core.OpShl}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 16 {
+		t.Fatalf("expected 16, got %v", val)
+	}
+}
+
 func TestInterpret_And(t *testing.T) {
 	mod := &module.Module{
 		Magic:   "IAVM",
@@ -1643,6 +1721,71 @@ func TestInterpret_Closure(t *testing.T) {
 	val := vm.stack.Pop()
 	if val.Kind != core.ValueI64 || val.Raw.(int64) != 42 {
 		t.Fatalf("expected 42, got %v", val)
+	}
+}
+
+func TestInterpret_ClosureUpvalue(t *testing.T) {
+	// Simulates: function makeCounter(start) { let n = start; function inc() { n = n + 1; return n; } return inc; }
+	// Function 0 (makeCounter): param=start(local0), n=local1
+	//   OpConst 0 (start_val), OpStoreLocal 1 (n = start)
+	//   OpClosure 1 (inc), OpReturn
+	// Function 1 (inc): captures [n] from makeCounter (outer local 1)
+	//   OpLoadLocal 0 (n via upvalue), OpConst 1 (1), OpAdd, OpStoreLocal 0 (n), OpLoadLocal 0 (n), OpReturn
+	// Function 2 (entry):
+	//   OpConst 0 (0), OpCall 0 1 (makeCounter(0)), OpCall 0 0 (c1()), OpReturn
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}, {}, {}},
+		Functions: []module.Function{
+			{ // 0: makeCounter(start)
+				Name: "makeCounter", TypeIndex: 0,
+				Locals:    []core.ValueKind{core.ValueNull, core.ValueNull},
+				Constants: []any{int64(0)},
+				Captures:  nil,
+				Code: []core.Instruction{
+					{Op: core.OpLoadLocal, A: 0},       // load start (param)
+					{Op: core.OpStoreLocal, A: 1},       // n = start
+					{Op: core.OpClosure, A: 1},          // push inc (with capture of local 1)
+					{Op: core.OpReturn},                  // return inc
+				},
+			},
+			{ // 1: inc() - captures n from makeCounter (outer local 1)
+				Name: "inc", TypeIndex: 1,
+				Locals:    []core.ValueKind{core.ValueNull}, // local 0 = captured n
+				Constants: []any{int64(1)},
+				Captures:  []uint32{1}, // captures outer local 1 (n)
+				Code: []core.Instruction{
+					{Op: core.OpLoadLocal, A: 0},       // load n (via upvalue)
+					{Op: core.OpConst, A: 0},            // push 1
+					{Op: core.OpAdd},                    // n + 1
+					{Op: core.OpStoreLocal, A: 0},       // n = n + 1 (via upvalue)
+					{Op: core.OpLoadLocal, A: 0},        // load n
+					{Op: core.OpReturn},                  // return n
+				},
+			},
+			{ // 2: entry
+				Name: "entry", TypeIndex: 2,
+				Constants: []any{int64(0)},
+				Code: []core.Instruction{
+					{Op: core.OpConst, A: 0},            // push 0 (arg for makeCounter)
+					{Op: core.OpCall, A: 0, B: 1},       // makeCounter(0)
+					{Op: core.OpCall, A: 0, B: 0},       // c1() - should return 1
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 1 {
+		t.Fatalf("expected 1, got %v", val)
 	}
 }
 

@@ -32,6 +32,7 @@ type Function struct {
 	Constants    []any
 	MaxStack     uint32
 	IsEntryPoint bool
+	Captures     []uint32 // outer local indices captured by this closure
 }
 
 type Global struct {

@@ -702,6 +702,167 @@ func TestFullPipeline_ObjectPropertyAccess(t *testing.T) {
 	}
 }
 
+func TestFullPipeline_ObjectPropertyMultiple(t *testing.T) {
+	// let user = {name: "alice", score: 10}; print(user.name);
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpObject},                      // push empty object
+			{Op: bytecode.OpDup},                         // dup for set
+			{Op: bytecode.OpConstant, A: 0, B: 0},        // push "alice"
+			{Op: bytecode.OpSetProperty, A: 1, B: 0},     // obj.name = "alice"
+			{Op: bytecode.OpDup},                         // dup for set
+			{Op: bytecode.OpConstant, A: 2, B: 0},        // push 10
+			{Op: bytecode.OpSetProperty, A: 3, B: 0},     // obj.score = 10
+			{Op: bytecode.OpDefineName, A: 4, B: 0},      // define user
+			{Op: bytecode.OpGetName, A: 4, B: 0},         // load user
+			{Op: bytecode.OpGetProperty, A: 1, B: 0},     // user.name
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{"alice", "name", float64(10), "score", "user"},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueString || val.Raw.(string) != "alice" {
+		t.Fatalf("expected 'alice', got %v", val)
+	}
+}
+
+func TestFullPipeline_ObjectIndexAccess(t *testing.T) {
+	// let user = {city: "shanghai"}; user["city"]
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpObject},
+			{Op: bytecode.OpDup},
+			{Op: bytecode.OpConstant, A: 0, B: 0},        // "shanghai"
+			{Op: bytecode.OpSetProperty, A: 1, B: 0},     // obj.city = "shanghai"
+			{Op: bytecode.OpDefineName, A: 2, B: 0},      // define user
+			{Op: bytecode.OpGetName, A: 2, B: 0},         // load user
+			{Op: bytecode.OpConstant, A: 1, B: 0},        // "city"
+			{Op: bytecode.OpIndex},                       // user["city"]
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{"shanghai", "city", "user"},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueString || val.Raw.(string) != "shanghai" {
+		t.Fatalf("expected 'shanghai', got %v", val)
+	}
+}
+
+func TestFullPipeline_DataIaPattern(t *testing.T) {
+	// Mimics data.ia: let arr = [1,2,3,4]; arr[0]; let user = {name:"alice", score:10, city:"sh"}; user.name; user["city"]; user[key]
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			// let arr = [1, 2, 3, 4]
+			{Op: bytecode.OpConstant, A: 0, B: 0},  // 1
+			{Op: bytecode.OpConstant, A: 1, B: 0},  // 2
+			{Op: bytecode.OpConstant, A: 2, B: 0},  // 3
+			{Op: bytecode.OpConstant, A: 3, B: 0},  // 4
+			{Op: bytecode.OpArray, A: 4, B: 0},     // [1,2,3,4]
+			{Op: bytecode.OpDefineName, A: 4, B: 0}, // define arr
+			// arr[0]
+			{Op: bytecode.OpGetName, A: 4, B: 0},   // load arr
+			{Op: bytecode.OpConstant, A: 5, B: 0},  // 0
+			{Op: bytecode.OpIndex},                  // arr[0]
+			{Op: bytecode.OpPop},                    // discard
+			// let user = {name: "alice", score: 10, city: "shanghai"}
+			{Op: bytecode.OpObject},                                // {}
+			{Op: bytecode.OpDup},                                   // dup
+			{Op: bytecode.OpConstant, A: 6, B: 0},                  // "alice"
+			{Op: bytecode.OpSetProperty, A: 7, B: 0},              // .name = "alice"
+			{Op: bytecode.OpDup},                                   // dup
+			{Op: bytecode.OpConstant, A: 8, B: 0},                  // 10
+			{Op: bytecode.OpSetProperty, A: 9, B: 0},              // .score = 10
+			{Op: bytecode.OpDup},                                   // dup
+			{Op: bytecode.OpConstant, A: 10, B: 0},                 // "shanghai"
+			{Op: bytecode.OpSetProperty, A: 11, B: 0},             // .city = "shanghai"
+			{Op: bytecode.OpDefineName, A: 12, B: 0},               // define user
+			// user.name
+			{Op: bytecode.OpGetName, A: 12, B: 0},                 // load user
+			{Op: bytecode.OpGetProperty, A: 7, B: 0},              // .name
+			{Op: bytecode.OpPop},                                   // discard
+			// user["city"]
+			{Op: bytecode.OpGetName, A: 12, B: 0},                 // load user
+			{Op: bytecode.OpConstant, A: 11, B: 0},                 // "city"
+			{Op: bytecode.OpIndex},                                 // ["city"]
+			{Op: bytecode.OpPop},                                   // discard
+			// let key = "score"; user[key]
+			{Op: bytecode.OpConstant, A: 9, B: 0},                  // "score"
+			{Op: bytecode.OpDefineName, A: 13, B: 0},               // define key
+			{Op: bytecode.OpGetName, A: 12, B: 0},                 // load user
+			{Op: bytecode.OpGetName, A: 13, B: 0},                 // load key
+			{Op: bytecode.OpIndex},                                 // [key]
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{
+			float64(1), float64(2), float64(3), float64(4), // 0-3: array elements
+			"arr", float64(0), // 4-5: arr name, index 0
+			"alice", "name", float64(10), "score", // 6-9: user props
+			"shanghai", "city", "user", "key", // 10-13: more user props
+		},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueF64 || val.Raw.(float64) != 10 {
+		t.Fatalf("expected 10 (user[score]), got %v", val)
+	}
+}
+
 func TestFullPipeline_TryCatch(t *testing.T) {
 	// try { throw "err"; } catch (e) { return 42; }
 	chunk := &bytecode.Chunk{

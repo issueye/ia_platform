@@ -128,6 +128,14 @@ func decodeFunctionSection(mod *module.Module, d *decoder) error {
 		for j := 0; j < int(localCount); j++ {
 			mod.Functions[i].Locals[j] = core.ValueKind(d.readByte())
 		}
+		// Decode captures (upvalue indices) if remaining data
+		if d.pos < len(d.data) {
+			captureCount := d.readUint32()
+			mod.Functions[i].Captures = make([]uint32, captureCount)
+			for j := 0; j < int(captureCount); j++ {
+				mod.Functions[i].Captures[j] = d.readUint32()
+			}
+		}
 	}
 	return nil
 }

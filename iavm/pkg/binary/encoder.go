@@ -116,6 +116,11 @@ func encodeFunctionSection(m *module.Module) []byte {
 		for _, l := range fn.Locals {
 			buf.WriteByte(byte(l))
 		}
+		// Encode captures (upvalue indices)
+		binary.Write(&buf, binary.LittleEndian, uint32(len(fn.Captures)))
+		for _, c := range fn.Captures {
+			binary.Write(&buf, binary.LittleEndian, c)
+		}
 	}
 	return buf.Bytes()
 }

@@ -42,7 +42,7 @@ func LowerToModule(input any) (*module.Module, error) {
 	// Second pass: lower each function with full funcIndexMap available
 	for i, c := range chunk.Constants {
 		if ft, ok := c.(*bytecode.FunctionTemplate); ok {
-			mod.Functions[funcIndexMap[i]] = lowerFunction(ft, globalNames, funcIndexMap)
+			mod.Functions[funcIndexMap[i]] = lowerFunction(ft, globalNames, funcIndexMap, nil, mod)
 		}
 	}
 
@@ -192,17 +192,25 @@ func constantKey(c any) string {
 	}
 }
 
-func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32, funcMap map[int]int) module.Function {
-	fn := module.Function{
-		Name:      ft.Name,
-		TypeIndex: 0,
+// collectInnerFunctions recursively discovers all FunctionTemplate instances
+// in a chunk's constants and returns them indexed by their constant index.
+func collectInnerFunctions(chunk *bytecode.Chunk) map[int]*bytecode.FunctionTemplate {
+	result := make(map[int]*bytecode.FunctionTemplate)
+	if chunk == nil {
+		return result
 	}
+	for i, c := range chunk.Constants {
+		if ft, ok := c.(*bytecode.FunctionTemplate); ok {
+			result[i] = ft
+		}
+	}
+	return result
+}
 
-	// Build local variable map for function parameters and locals
+func buildLocalMap(ft *bytecode.FunctionTemplate) (map[string]uint32, uint32) {
 	localMap := make(map[string]uint32)
-	var nextLocalIdx uint32 = 0 // parameters start at local 0 (no implicit self for regular functions)
+	var nextLocalIdx uint32
 
-	// Map parameters to local indices
 	for _, param := range ft.Params {
 		localMap[param] = nextLocalIdx
 		nextLocalIdx++
@@ -212,7 +220,6 @@ func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32,
 		nextLocalIdx++
 	}
 
-	// Scan function code to find local variable definitions (OpDefineName inside function)
 	if ft.Chunk != nil {
 		for _, inst := range ft.Chunk.Code {
 			switch inst.Op {
@@ -238,6 +245,66 @@ func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32,
 		}
 	}
 
+	return localMap, nextLocalIdx
+}
+
+func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32, funcMap map[int]int, parentLocals map[string]uint32, mod *module.Module) module.Function {
+	fn := module.Function{
+		Name:      ft.Name,
+		TypeIndex: 0,
+	}
+
+	localMap, nextLocalIdx := buildLocalMap(ft)
+
+	// Detect captures: names in the function body that are in parentLocals but not in localMap
+	var captureIndices []uint32
+	if parentLocals != nil && ft.Chunk != nil {
+		captureSet := make(map[string]uint32)
+		for _, inst := range ft.Chunk.Code {
+			if inst.Op == bytecode.OpGetName || inst.Op == bytecode.OpSetName {
+				if int(inst.A) < len(ft.Chunk.Constants) {
+					if name, ok := ft.Chunk.Constants[inst.A].(string); ok {
+						if _, inLocal := localMap[name]; !inLocal {
+							if outerIdx, inParent := parentLocals[name]; inParent {
+								if _, alreadyCaptured := captureSet[name]; !alreadyCaptured {
+									captureSet[name] = outerIdx
+									// Add as a local in the inner function
+									localMap[name] = nextLocalIdx
+									captureIndices = append(captureIndices, outerIdx)
+									nextLocalIdx++
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	fn.Captures = captureIndices
+
+	// Discover and recursively lower inner functions
+	innerFuncMap := make(map[int]int)
+	if ft.Chunk != nil && mod != nil {
+		for ci, c := range ft.Chunk.Constants {
+			if innerFt, ok := c.(*bytecode.FunctionTemplate); ok {
+				fnIdx := len(mod.Functions)
+				mod.Functions = append(mod.Functions, module.Function{})
+				innerFuncMap[ci] = fnIdx
+				// Recursively lower the inner function with current localMap as parent
+				mod.Functions[fnIdx] = lowerFunction(innerFt, globalNames, funcMap, localMap, mod)
+			}
+		}
+	}
+
+	// Merge inner funcMap with outer funcMap
+	mergedFuncMap := make(map[int]int)
+	for k, v := range funcMap {
+		mergedFuncMap[k] = v
+	}
+	for k, v := range innerFuncMap {
+		mergedFuncMap[k] = v
+	}
+
 	// Allocate locals
 	totalLocals := int(nextLocalIdx)
 	for i := 0; i < totalLocals; i++ {
@@ -248,7 +315,7 @@ func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32,
 	if ft.Chunk != nil {
 		constMap := make(map[int]int)
 		fn.Constants, constMap = lowerConstants(ft.Chunk.Constants, ft.Chunk.Code)
-		fn.Code = lowerInstructions(ft.Chunk.Code, funcMap)
+		fn.Code = lowerInstructions(ft.Chunk.Code, mergedFuncMap)
 
 		// Remap constant indices and names
 		for i, inst := range fn.Code {
@@ -582,6 +649,7 @@ func lowerInstructions(ialangInsts []bytecode.Instruction, funcMap map[int]int) 
 
 		case bytecode.OpObject:
 			iavmInst.Op = core.OpMakeObject
+			iavmInst.A = uint32(inst.A)
 
 		case bytecode.OpGetProperty:
 			iavmInst.Op = core.OpGetProp

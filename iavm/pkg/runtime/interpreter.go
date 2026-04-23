@@ -86,13 +86,25 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if int(inst.A) >= len(frame.Locals) {
 			return fmt.Errorf("local index %d out of range", inst.A)
 		}
+		if frame.UpvalueMap != nil {
+			if uv, ok := frame.UpvalueMap[inst.A]; ok {
+				vm.stack.Push(uv.Value)
+				break
+			}
+		}
 		vm.stack.Push(frame.Locals[inst.A])
 
 	case core.OpStoreLocal:
 		if int(inst.A) >= len(frame.Locals) {
 			return fmt.Errorf("local index %d out of range", inst.A)
 		}
-		frame.Locals[inst.A] = vm.stack.Pop()
+		val := vm.stack.Pop()
+		frame.Locals[inst.A] = val
+		if frame.UpvalueMap != nil {
+			if uv, ok := frame.UpvalueMap[inst.A]; ok {
+				uv.Value = val
+			}
+		}
 
 	case core.OpLoadGlobal:
 		if int(inst.A) >= len(vm.globals) {
@@ -193,7 +205,30 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 
 	case core.OpClosure:
-		vm.stack.Push(core.Value{Kind: core.ValueFuncRef, Raw: inst.A})
+		fnIdx := inst.A
+		if int(fnIdx) < len(vm.mod.Functions) {
+			fn := &vm.mod.Functions[fnIdx]
+			if len(fn.Captures) > 0 {
+				upvalues := make([]*core.Upvalue, len(fn.Captures))
+				for i, outerLocalIdx := range fn.Captures {
+					val := core.Value{Kind: core.ValueNull}
+					if int(outerLocalIdx) < len(frame.Locals) {
+						val = frame.Locals[outerLocalIdx]
+					}
+					upvalues[i] = &core.Upvalue{Value: val}
+
+					if frame.UpvalueMap == nil {
+						frame.UpvalueMap = make(map[uint32]*core.Upvalue)
+					}
+					frame.UpvalueMap[outerLocalIdx] = upvalues[i]
+				}
+				vm.stack.Push(core.Value{Kind: core.ValueFuncRef, Raw: fnIdx, Upvalues: upvalues})
+			} else {
+				vm.stack.Push(core.Value{Kind: core.ValueFuncRef, Raw: fnIdx})
+			}
+		} else {
+			vm.stack.Push(core.Value{Kind: core.ValueFuncRef, Raw: fnIdx})
+		}
 
 	case core.OpJumpIfNullish:
 		val := vm.stack.Peek(0)
@@ -266,6 +301,17 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 					newFrame.Locals[i] = args[i]
 				}
 			}
+			// Propagate upvalues from closure to new frame
+			if len(fnRef.Upvalues) > 0 {
+				if newFrame.UpvalueMap == nil {
+					newFrame.UpvalueMap = make(map[uint32]*core.Upvalue)
+				}
+				for i, uv := range fnRef.Upvalues {
+					if i < len(newFrame.Locals) {
+						newFrame.UpvalueMap[uint32(i)] = uv
+					}
+				}
+			}
 			vm.frames = append(vm.frames, newFrame)
 		}
 
@@ -281,7 +327,19 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		vm.stack.Push(core.Value{Kind: core.ValueArrayRef, Raw: arr})
 
 	case core.OpMakeObject:
-		vm.stack.Push(core.Value{Kind: core.ValueObjectRef, Raw: make(map[string]core.Value)})
+		m := make(map[string]core.Value)
+		if inst.A > 0 {
+			// Pop key-value pairs: stack has [..., key1, val1, key2, val2, ...]
+			// Popping order: val2, key2, val1, key1
+			for i := 0; i < int(inst.A); i++ {
+				val := vm.stack.Pop()
+				keyVal := vm.stack.Pop()
+				if keyVal.Kind == core.ValueString {
+					m[keyVal.Raw.(string)] = val
+				}
+			}
+		}
+		vm.stack.Push(core.Value{Kind: core.ValueObjectRef, Raw: m})
 
 	case core.OpGetProp:
 		obj := vm.stack.Pop()
@@ -704,37 +762,57 @@ func isTruthy(val core.Value) bool {
 	}
 }
 
+func toInt64Bitwise(v core.Value) (int64, bool) {
+	switch v.Kind {
+	case core.ValueI64:
+		return v.Raw.(int64), true
+	case core.ValueF64:
+		return int64(v.Raw.(float64)), true
+	}
+	return 0, false
+}
+
 func bitAndValues(a, b core.Value) core.Value {
-	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
-		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) & b.Raw.(int64)}
+	ai, aok := toInt64Bitwise(a)
+	bi, bok := toInt64Bitwise(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueI64, Raw: ai & bi}
 	}
 	return core.Value{Kind: core.ValueNull}
 }
 
 func bitOrValues(a, b core.Value) core.Value {
-	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
-		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) | b.Raw.(int64)}
+	ai, aok := toInt64Bitwise(a)
+	bi, bok := toInt64Bitwise(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueI64, Raw: ai | bi}
 	}
 	return core.Value{Kind: core.ValueNull}
 }
 
 func bitXorValues(a, b core.Value) core.Value {
-	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
-		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) ^ b.Raw.(int64)}
+	ai, aok := toInt64Bitwise(a)
+	bi, bok := toInt64Bitwise(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueI64, Raw: ai ^ bi}
 	}
 	return core.Value{Kind: core.ValueNull}
 }
 
 func shlValues(a, b core.Value) core.Value {
-	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
-		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) << b.Raw.(int64)}
+	ai, aok := toInt64Bitwise(a)
+	bi, bok := toInt64Bitwise(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueI64, Raw: ai << bi}
 	}
 	return core.Value{Kind: core.ValueNull}
 }
 
 func shrValues(a, b core.Value) core.Value {
-	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
-		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) >> b.Raw.(int64)}
+	ai, aok := toInt64Bitwise(a)
+	bi, bok := toInt64Bitwise(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueI64, Raw: ai >> bi}
 	}
 	return core.Value{Kind: core.ValueNull}
 }

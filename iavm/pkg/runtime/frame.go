@@ -17,6 +17,7 @@ type Frame struct {
 	Locals        []core.Value
 	BasePointer   uint32
 	TryHandlers   []TryHandler
+	UpvalueMap    map[uint32]*core.Upvalue // local slot -> upvalue cell (if captured by a closure)
 }
 
 func NewFrame(fnIndex uint32, fn *module.Function, baseSP uint32) *Frame {
