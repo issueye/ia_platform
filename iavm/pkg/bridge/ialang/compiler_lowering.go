@@ -166,7 +166,7 @@ func buildModuleConstantPool(mod *module.Module) {
 		// Remap instructions that reference constants
 		for ii, inst := range fn.Code {
 			switch inst.Op {
-			case core.OpConst, core.OpGetProp, core.OpSetProp, core.OpImportFunc:
+			case core.OpConst, core.OpGetProp, core.OpSetProp, core.OpImportFunc, core.OpImportCap, core.OpSuper:
 				if int(inst.A) < len(remap) {
 					mod.Functions[fi].Code[ii].A = remap[inst.A]
 				}
@@ -263,6 +263,9 @@ func functionUsesThis(ft *bytecode.FunctionTemplate) bool {
 		return false
 	}
 	for _, inst := range ft.Chunk.Code {
+		if inst.Op == bytecode.OpSuper || inst.Op == bytecode.OpSuperCall {
+			return true
+		}
 		if (inst.Op == bytecode.OpGetName || inst.Op == bytecode.OpSetName || inst.Op == bytecode.OpDefineName) &&
 			int(inst.A) < len(ft.Chunk.Constants) {
 			if name, ok := ft.Chunk.Constants[inst.A].(string); ok && name == "this" {
@@ -349,7 +352,7 @@ func lowerFunction(ft *bytecode.FunctionTemplate, globalNames map[string]uint32,
 		// Remap constant indices and names
 		for i, inst := range fn.Code {
 			switch inst.Op {
-			case core.OpConst, core.OpLoadGlobal, core.OpStoreGlobal, core.OpGetProp, core.OpSetProp, core.OpImportFunc:
+			case core.OpConst, core.OpLoadGlobal, core.OpStoreGlobal, core.OpGetProp, core.OpSetProp, core.OpImportFunc, core.OpImportCap, core.OpSuper:
 				if int(inst.A) < len(ft.Chunk.Constants) {
 					if newIdx, ok := constMap[int(inst.A)]; ok && newIdx >= 0 {
 						fn.Code[i].A = uint32(newIdx)
@@ -727,6 +730,14 @@ func lowerInstructions(ialangInsts []bytecode.Instruction, funcMap map[int]int) 
 			iavmInst.Op = core.OpNewInstance
 			iavmInst.A = uint32(inst.A)
 
+		case bytecode.OpSuper:
+			iavmInst.Op = core.OpSuper
+			iavmInst.A = uint32(inst.A)
+
+		case bytecode.OpSuperCall:
+			iavmInst.Op = core.OpSuperCall
+			iavmInst.A = uint32(inst.A)
+
 		case bytecode.OpIndex:
 			iavmInst.Op = core.OpIndex
 
@@ -772,7 +783,7 @@ func lowerInstructions(ialangInsts []bytecode.Instruction, funcMap map[int]int) 
 
 		case bytecode.OpImportNamespace, bytecode.OpImportDynamic,
 			bytecode.OpExportName, bytecode.OpExportAs, bytecode.OpExportDefault,
-			bytecode.OpExportAll, bytecode.OpSuper, bytecode.OpSuperCall,
+			bytecode.OpExportAll,
 			bytecode.OpSpreadArray, bytecode.OpSpreadObject, bytecode.OpSpreadCall,
 			bytecode.OpAwait:
 			// Unsupported in minimal iavm, use Nop

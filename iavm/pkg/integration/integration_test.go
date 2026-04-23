@@ -2,10 +2,14 @@ package integration
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"iacommon/pkg/host/api"
 	"iacommon/pkg/ialang/bytecode"
+	compiler "ialang/pkg/lang/compiler"
+	frontend "ialang/pkg/lang/frontend"
 	"iavm/pkg/binary"
 	bridge_ialang "iavm/pkg/bridge/ialang"
 	"iavm/pkg/core"
@@ -293,6 +297,39 @@ func TestFullPipeline_WithHostCapabilityModuleConstants(t *testing.T) {
 	}
 	if host.callLog[0].CapabilityID != "fs" {
 		t.Fatalf("expected decoded module constants to drive fs capability, got %q", host.callLog[0].CapabilityID)
+	}
+}
+
+func TestFullPipeline_ClassInheritanceExample(t *testing.T) {
+	sourcePath := filepath.Join("..", "..", "..", "ialang", "examples", "inheritance.ia")
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	lexer := frontend.NewLexer(string(source))
+	parser := frontend.NewParser(lexer)
+	program := parser.ParseProgram()
+	if errs := parser.Errors(); len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	chunk, errs := compiler.NewCompiler().Compile(program)
+	if len(errs) > 0 {
+		t.Fatalf("compile errors: %v", errs)
+	}
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+	if _, err := binary.VerifyModule(mod, binary.VerifyOptions{}); err != nil {
+		t.Fatalf("VerifyModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("VM.Run failed: %v", err)
 	}
 }
 

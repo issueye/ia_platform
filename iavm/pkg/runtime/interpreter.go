@@ -561,6 +561,33 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			}
 		}
 
+	case core.OpSuper:
+		propNameVal, err := vm.constantAt(frame, inst.A)
+		if err != nil {
+			return err
+		}
+		propName, ok := propNameVal.(string)
+		if !ok {
+			return fmt.Errorf("super property name at index %d is not a string", inst.A)
+		}
+		method, err := vm.lookupSuperMethod(frame, propName)
+		if err != nil {
+			return err
+		}
+		vm.stack.Push(method)
+
+	case core.OpSuperCall:
+		argCount := int(inst.A)
+		args := make([]core.Value, argCount)
+		for i := argCount - 1; i >= 0; i-- {
+			args[i] = vm.stack.Pop()
+		}
+		result, err := vm.invokeSuperConstructor(frame, args)
+		if err != nil {
+			return err
+		}
+		vm.stack.Push(result)
+
 	default:
 		return fmt.Errorf("unimplemented opcode: %v", inst.Op)
 	}
@@ -839,6 +866,64 @@ func lookupClassAccessor(classVal core.Value, tableKey, name string) (core.Value
 		current = parent
 	}
 	return core.Value{}, false
+}
+
+func (vm *VM) lookupSuperMethod(frame *Frame, name string) (core.Value, error) {
+	receiver, classVal, err := vm.currentReceiverAndClass(frame)
+	if err != nil {
+		return core.Value{}, err
+	}
+
+	classMap := classVal.Raw.(map[string]core.Value)
+	parent, ok := classMap[classParentKey]
+	if !ok || parent.Kind == core.ValueNull {
+		return core.Value{}, fmt.Errorf("super property %s not found", name)
+	}
+
+	method, ok := lookupClassAccessor(parent, classMethodsKey, name)
+	if !ok {
+		return core.Value{}, fmt.Errorf("super property %s not found", name)
+	}
+	return bindReceiver(method, receiver), nil
+}
+
+func (vm *VM) invokeSuperConstructor(frame *Frame, args []core.Value) (core.Value, error) {
+	receiver, classVal, err := vm.currentReceiverAndClass(frame)
+	if err != nil {
+		return core.Value{}, err
+	}
+
+	classMap := classVal.Raw.(map[string]core.Value)
+	parent, ok := classMap[classParentKey]
+	if !ok || parent.Kind == core.ValueNull {
+		return core.Value{}, fmt.Errorf("parent class has no constructor")
+	}
+
+	constructor, ok := lookupClassAccessor(parent, classMethodsKey, "constructor")
+	if !ok {
+		return core.Value{}, fmt.Errorf("parent class has no constructor")
+	}
+	if err := vm.invokeCallable(bindReceiver(constructor, receiver), args); err != nil {
+		return core.Value{}, err
+	}
+	return core.Value{Kind: core.ValueNull}, nil
+}
+
+func (vm *VM) currentReceiverAndClass(frame *Frame) (core.Value, core.Value, error) {
+	fn := &vm.mod.Functions[frame.FunctionIndex]
+	if !fn.HasThis || int(fn.ThisLocal) >= len(frame.Locals) {
+		return core.Value{}, core.Value{}, fmt.Errorf("super can only be used on instance methods")
+	}
+	receiver := frame.Locals[fn.ThisLocal]
+	if !isInstanceValue(receiver) {
+		return core.Value{}, core.Value{}, fmt.Errorf("super can only be used on instance methods")
+	}
+	instanceMap := receiver.Raw.(map[string]core.Value)
+	classVal, ok := instanceMap[instanceClassRefKey]
+	if !ok || !isClassValue(classVal) {
+		return core.Value{}, core.Value{}, fmt.Errorf("super can only be used on instance methods")
+	}
+	return receiver, classVal, nil
 }
 
 func (vm *VM) popHostCallArgs(argCount int) map[string]any {

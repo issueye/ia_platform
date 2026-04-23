@@ -444,12 +444,16 @@ func stackEffect(inst core.Instruction, m *module.Module) (int, int, error) {
 		return classStackEffect(inst), 1, nil
 	case core.OpGetProp:
 		return 1, 1, nil
+	case core.OpSuper:
+		return 0, 1, nil
 	case core.OpSetProp:
 		return 2, 0, nil
 	case core.OpCall:
 		return callStackEffect(inst, m)
 	case core.OpNewInstance:
 		return int(inst.A) + 1, 1, nil
+	case core.OpSuperCall:
+		return int(inst.A), 1, nil
 	case core.OpReturn:
 		return 0, 0, nil
 	default:
@@ -667,7 +671,7 @@ func isValidValueKind(kind core.ValueKind) bool {
 }
 
 func isValidOpcode(op core.OpCode) bool {
-	return op <= core.OpNewInstance
+	return op <= core.OpSuperCall
 }
 
 func verifyStackDepth(fn *module.Function) error {
@@ -744,6 +748,9 @@ func stackDelta(inst core.Instruction) int {
 	case core.OpGetProp:
 		return 0
 
+	case core.OpSuper:
+		return 1
+
 	case core.OpSetProp:
 		return -2
 
@@ -752,6 +759,9 @@ func stackDelta(inst core.Instruction) int {
 
 	case core.OpNewInstance:
 		return -int(inst.A)
+
+	case core.OpSuperCall:
+		return 1 - int(inst.A)
 
 	default:
 		return 0

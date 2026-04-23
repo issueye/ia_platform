@@ -56,4 +56,6 @@ const (
 	OpClass
 	OpClosure
 	OpNewInstance
+	OpSuper
+	OpSuperCall
 )
