@@ -19,18 +19,19 @@ const (
 )
 
 type promiseState struct {
-	Status          promiseStatus
-	Result          core.Value
-	Error           string
-	PollHandleID    uint64
-	HostTimeout     time.Duration
-	WaitTimeout     time.Duration
-	RetryCount      int
-	RetryBackoff    time.Duration
-	RetryMaxBackoff time.Duration
-	RetryMaxElapsed time.Duration
-	RetryMultiplier float64
-	RetryJitter     float64
+	Status           promiseStatus
+	Result           core.Value
+	Error            string
+	PollHandleID     uint64
+	HostTimeout      time.Duration
+	WaitTimeout      time.Duration
+	RetryPollEnabled bool
+	RetryCount       int
+	RetryBackoff     time.Duration
+	RetryMaxBackoff  time.Duration
+	RetryMaxElapsed  time.Duration
+	RetryMultiplier  float64
+	RetryJitter      float64
 }
 
 func pendingPromiseValue() core.Value {
@@ -62,22 +63,23 @@ func rejectedPromiseValue(message string) core.Value {
 	}
 }
 
-func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, errText string, hostTimeout time.Duration, waitTimeout time.Duration, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMaxElapsed time.Duration, retryMultiplier float64, retryJitter float64) core.Value {
+func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, errText string, hostTimeout time.Duration, waitTimeout time.Duration, retryPollEnabled bool, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMaxElapsed time.Duration, retryMultiplier float64, retryJitter float64) core.Value {
 	switch {
 	case !done:
 		return core.Value{
 			Kind: core.ValuePromise,
 			Raw: &promiseState{
-				Status:          promiseStatusPending,
-				PollHandleID:    handleID,
-				HostTimeout:     hostTimeout,
-				WaitTimeout:     waitTimeout,
-				RetryCount:      retryCount,
-				RetryBackoff:    retryBackoff,
-				RetryMaxBackoff: retryMaxBackoff,
-				RetryMaxElapsed: retryMaxElapsed,
-				RetryMultiplier: retryMultiplier,
-				RetryJitter:     retryJitter,
+				Status:           promiseStatusPending,
+				PollHandleID:     handleID,
+				HostTimeout:      hostTimeout,
+				WaitTimeout:      waitTimeout,
+				RetryPollEnabled: retryPollEnabled,
+				RetryCount:       retryCount,
+				RetryBackoff:     retryBackoff,
+				RetryMaxBackoff:  retryMaxBackoff,
+				RetryMaxElapsed:  retryMaxElapsed,
+				RetryMultiplier:  retryMultiplier,
+				RetryJitter:      retryJitter,
 			},
 		}
 	case errText != "":

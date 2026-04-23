@@ -908,6 +908,63 @@ func TestRunUntilSettledCanDisableCapabilityRetryProfile(t *testing.T) {
 	}
 }
 
+func TestRunUntilSettledCanDisableCapabilityPollRetryProfile(t *testing.T) {
+	host := newMockHost()
+	host.pollDeadlineFailures = 1
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"network", int64(37), "ready"},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"retry_poll_enabled": false,
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 2},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		HostTimeout:  5 * time.Millisecond,
+		RetryCount:   2,
+		RetryBackoff: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	err = vm.RunUntilSettled(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunUntilSettled error = %v, want deadline exceeded", err)
+	}
+	if len(host.pollLog) != 1 {
+		t.Fatalf("expected poll-retry-disabled capability to poll once, got %#v", host.pollLog)
+	}
+}
+
 func TestRunUntilSettledKeepsPollRetryWhenCallRetryIsDisabled(t *testing.T) {
 	host := newMockHost()
 	host.pollDeadlineFailures = 2
@@ -990,7 +1047,7 @@ func TestRetryPollLikeStopsWhenElapsedBudgetIsExhausted(t *testing.T) {
 	vm := &VM{}
 	attempts := 0
 
-	_, err := vm.retryPollLike(context.Background(), 3, 20*time.Millisecond, 0, 5*time.Millisecond, 2, 0, func() (api.PollResult, error) {
+	_, err := vm.retryPollLike(context.Background(), true, 3, 20*time.Millisecond, 0, 5*time.Millisecond, 2, 0, func() (api.PollResult, error) {
 		attempts++
 		return api.PollResult{}, api.MarkRetryable(errors.New("retry later"))
 	})

@@ -752,6 +752,58 @@ func TestCapability_HostCallCanDisableOnlyCallRetry(t *testing.T) {
 	}
 }
 
+func TestCapability_HostCallKeepsRetryWhenPollRetryIsDisabled(t *testing.T) {
+	host := newMockHost()
+	host.callDeadlineFailures = 1
+	host.callResult = api.CallResult{Value: map[string]any{"ok": true}}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityFS,
+				Config: map[string]any{
+					"retry_poll_enabled": false,
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs", "fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:                host,
+		HostTimeout:         5 * time.Millisecond,
+		RetryCount:          1,
+		RetryBackoff:        time.Millisecond,
+		RetryCallOpPrefixes: []string{"fs."},
+	})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if len(host.callLog) != 2 {
+		t.Fatalf("expected host.call retry to remain enabled, got %d attempts", len(host.callLog))
+	}
+}
+
 func TestCapability_HostCallExclusionOverridesRetryOperationPrefix(t *testing.T) {
 	host := newMockHost()
 	host.callDeadlineFailures = 1

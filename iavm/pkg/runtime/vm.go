@@ -53,6 +53,7 @@ type capabilityTimeoutProfile struct {
 	WaitTimeout                 time.Duration
 	RetryEnabled                bool
 	RetryCallEnabled            bool
+	RetryPollEnabled            bool
 	RetryCount                  int
 	RetryBackoff                time.Duration
 	RetryMaxBackoff             time.Duration
@@ -216,7 +217,7 @@ func (vm *VM) WaitSuspension(ctx context.Context) error {
 		if state.WaitTimeout > 0 {
 			waitTimeout = state.WaitTimeout
 		}
-		result, err := vm.retryPollLike(ctx, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMaxElapsed, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
+		result, err := vm.retryPollLike(ctx, state.RetryPollEnabled, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMaxElapsed, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
 			waitCtx, cancel := vm.hostOperationContext(ctx, waitTimeout)
 			defer cancel()
 			return waiter.Wait(waitCtx, state.PollHandleID)
@@ -272,7 +273,7 @@ func (vm *VM) waitSuspensionByPolling(ctx context.Context, state *promiseState) 
 		if state.HostTimeout > 0 {
 			pollTimeout = state.HostTimeout
 		}
-		result, err := vm.retryPollLike(ctx, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMaxElapsed, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
+		result, err := vm.retryPollLike(ctx, state.RetryPollEnabled, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMaxElapsed, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
 			pollCtx, cancel := vm.hostOperationContext(ctx, pollTimeout)
 			defer cancel()
 			return vm.options.Host.Poll(pollCtx, state.PollHandleID)
@@ -320,7 +321,10 @@ func (vm *VM) hostOperationContext(base context.Context, timeout time.Duration) 
 	return context.WithTimeout(base, timeout)
 }
 
-func (vm *VM) retryPollLike(ctx context.Context, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMaxElapsed time.Duration, retryMultiplier float64, retryJitter float64, op func() (api.PollResult, error)) (api.PollResult, error) {
+func (vm *VM) retryPollLike(ctx context.Context, retryEnabled bool, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMaxElapsed time.Duration, retryMultiplier float64, retryJitter float64, op func() (api.PollResult, error)) (api.PollResult, error) {
+	if !retryEnabled {
+		return op()
+	}
 	attempts := retryCount + 1
 	if attempts <= 0 {
 		attempts = 1
@@ -528,6 +532,7 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 		WaitTimeout:                 vm.options.WaitTimeout,
 		RetryEnabled:                true,
 		RetryCallEnabled:            true,
+		RetryPollEnabled:            true,
 		RetryCount:                  vm.options.RetryCount,
 		RetryBackoff:                vm.options.RetryBackoff,
 		RetryMaxBackoff:             vm.options.RetryMaxBackoff,
@@ -554,6 +559,9 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	}
 	if retryCallEnabled, ok := readBool(config, "retry_call_enabled", "retryCallEnabled"); ok {
 		profile.RetryCallEnabled = retryCallEnabled
+	}
+	if retryPollEnabled, ok := readBool(config, "retry_poll_enabled", "retryPollEnabled"); ok {
+		profile.RetryPollEnabled = retryPollEnabled
 	}
 	if retryCount, ok := readInt(config, "retry_count", "retryCount"); ok {
 		profile.RetryCount = retryCount
@@ -586,6 +594,8 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 		profile.RetryExcludedCallOpPrefixes = excludedCallOpPrefixes
 	}
 	if !profile.RetryEnabled {
+		profile.RetryCallEnabled = false
+		profile.RetryPollEnabled = false
 		profile.RetryCount = 0
 		profile.RetryBackoff = 0
 		profile.RetryMaxBackoff = 0
@@ -812,7 +822,7 @@ func (vm *VM) resolveSuspendedValue(v core.Value) (core.Value, error) {
 		if state.HostTimeout > 0 {
 			pollTimeout = state.HostTimeout
 		}
-		result, err := vm.retryPollLike(vm.hostContext(), state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMaxElapsed, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
+		result, err := vm.retryPollLike(vm.hostContext(), state.RetryPollEnabled, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMaxElapsed, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
 			pollCtx, cancel := vm.hostOperationContext(vm.hostContext(), pollTimeout)
 			defer cancel()
 			return vm.options.Host.Poll(pollCtx, state.PollHandleID)
