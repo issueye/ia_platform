@@ -51,6 +51,7 @@ type Suspension struct {
 type capabilityTimeoutProfile struct {
 	HostTimeout                 time.Duration
 	WaitTimeout                 time.Duration
+	RetryEnabled                bool
 	RetryCount                  int
 	RetryBackoff                time.Duration
 	RetryMaxBackoff             time.Duration
@@ -524,6 +525,7 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	profile := capabilityTimeoutProfile{
 		HostTimeout:                 vm.options.HostTimeout,
 		WaitTimeout:                 vm.options.WaitTimeout,
+		RetryEnabled:                true,
 		RetryCount:                  vm.options.RetryCount,
 		RetryBackoff:                vm.options.RetryBackoff,
 		RetryMaxBackoff:             vm.options.RetryMaxBackoff,
@@ -544,6 +546,9 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	}
 	if timeout, ok := readDurationMS(config, "wait_timeout_ms", "waitTimeoutMS"); ok {
 		profile.WaitTimeout = timeout
+	}
+	if retryEnabled, ok := readBool(config, "retry_enabled", "retryEnabled"); ok {
+		profile.RetryEnabled = retryEnabled
 	}
 	if retryCount, ok := readInt(config, "retry_count", "retryCount"); ok {
 		profile.RetryCount = retryCount
@@ -574,6 +579,18 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	}
 	if excludedCallOpPrefixes, ok := readStringSlice(config, "retry_excluded_call_op_prefixes", "retryExcludedCallOpPrefixes"); ok {
 		profile.RetryExcludedCallOpPrefixes = excludedCallOpPrefixes
+	}
+	if !profile.RetryEnabled {
+		profile.RetryCount = 0
+		profile.RetryBackoff = 0
+		profile.RetryMaxBackoff = 0
+		profile.RetryMaxElapsed = 0
+		profile.RetryMultiplier = 0
+		profile.RetryJitter = 0
+		profile.RetryCallOps = nil
+		profile.RetryCallOpPrefixes = nil
+		profile.RetryExcludedCallOps = nil
+		profile.RetryExcludedCallOpPrefixes = nil
 	}
 	return profile
 }
@@ -633,6 +650,27 @@ func readInt(values map[string]any, keys ...string) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+func readBool(values map[string]any, keys ...string) (bool, bool) {
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok || value == nil {
+			continue
+		}
+		switch typed := value.(type) {
+		case bool:
+			return typed, true
+		case string:
+			if typed == "true" {
+				return true, true
+			}
+			if typed == "false" {
+				return false, true
+			}
+		}
+	}
+	return false, false
 }
 
 func readFloat(values map[string]any, keys ...string) (float64, bool) {
