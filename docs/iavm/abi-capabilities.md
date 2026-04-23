@@ -507,6 +507,7 @@ runtime 可以先将这些错误包装成运行时错误；后续若接入 ialan
 - 对 `network.http_fetch`，`DefaultHost` 还支持 capability 级 `retry_http_statuses` / `retryHTTPStatuses` 配置；只有命中该显式状态码列表时，HTTP 响应才会被映射为 retryable error，未配置时仍按普通响应返回
 - `network.http_fetch` 还支持 capability 级 `retry_http_status_classes` / `retryHTTPStatusClasses` 配置，用于声明 `5xx` 这类状态族；命中时同样会触发 retryable error 映射
 - `network.http_fetch` 还支持 capability 级 `retry_http_excluded_statuses` / `retryHTTPExcludedStatuses` 配置，用于从上述状态码/状态族策略中排除具体状态；命中时会直接保留原始 HTTP 响应
+- `network.http_fetch` 还支持 capability 级 `retry_http_excluded_status_classes` / `retryHTTPExcludedStatusClasses` 配置，用于从上述状态族策略中排除整个状态族；命中时同样会直接保留原始 HTTP 响应
 - `network.http_fetch` 还支持 capability 级 `retry_http_methods` / `retryHTTPMethods` 安全阀；当该列表存在时，只有命中的 HTTP method 才允许上述状态码重试映射生效
 - `network.http_fetch` 还支持 capability 级 `retry_http_default_safe_methods` / `retryHTTPDefaultSafeMethods` 开关；开启后、且未显式提供 `retry_http_methods` 时，会自动允许标准幂等方法集（`GET/HEAD/OPTIONS/TRACE/PUT/DELETE`）参与上述状态码重试映射
 - 当 `network.http_fetch` 命中的 HTTP 响应同时带有 `Retry-After` 头时，`DefaultHost` 会把它解析为 backoff hint 一并传给 runtime
