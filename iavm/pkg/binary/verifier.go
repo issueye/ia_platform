@@ -428,7 +428,7 @@ func stackEffect(inst core.Instruction, m *module.Module) (int, int, error) {
 	case core.OpStoreLocal, core.OpStoreGlobal, core.OpJumpIfFalse, core.OpPop, core.OpThrow:
 		return 1, 0, nil
 	case core.OpHostCall:
-		return 1, 1, nil
+		return int(inst.A) + 1, 1, nil
 	case core.OpNeg, core.OpNot, core.OpTypeof:
 		return 1, 1, nil
 	case core.OpDup:
@@ -684,7 +684,7 @@ func stackDelta(inst core.Instruction) int {
 		return -2
 
 	case core.OpHostCall:
-		return 0
+		return -int(inst.A)
 
 	case core.OpNewInstance:
 		return -int(inst.A)

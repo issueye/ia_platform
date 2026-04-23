@@ -277,6 +277,23 @@ Network capability kind 为 `network`，当前 `DefaultHost` 只稳定暴露 HTT
 
 runtime 可以先将这些错误包装成运行时错误；后续若接入 ialang 结构化异常，应保留原始错误分类。
 
+## 5.1 IAVM `OpHostCall` 参数约定
+
+当前 IAVM runtime 对 `OpHostCall` 采用以下栈约定：
+
+- `inst.A = 参数个数`
+- 栈布局为：`[..., arg1, arg2, ..., operation]`
+- runtime 先弹出 `operation`，再按 `inst.A` 弹出参数
+
+参数编码规则：
+
+- 当 `inst.A == 1` 且唯一参数是对象时，该对象会直接转换成 `CallRequest.Args`
+- 否则 runtime 会构造：
+  - `args`: 保持原顺序的参数数组
+  - `arg0`, `arg1`, ...: 位置参数镜像
+
+建议当前 ABI 调用优先使用“单对象参数”模式，这样可以直接对接 `fs.read_file`、`fs.write_file`、`network.http_fetch` 等已稳定 operation 的命名字段。
+
 ## 6. 版本与演进规则
 
 短期 ABI 规则：
@@ -293,4 +310,3 @@ runtime 可以先将这些错误包装成运行时错误；后续若接入 ialan
 2. 为 FS 和 Network 增加 typed request/response adapter。
 3. 在 verifier 或 runtime 初始化阶段校验模块声明 capability 与实际 host operation 的一致性。
 4. 为 `run-iavm --cap-config` 设计 TOML 配置，并映射到 `AcquireRequest.Config`。
-

@@ -179,6 +179,16 @@ For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.4-closure-class-pl
 
 ---
 
+## 0.0.5 Host ABI & Control Flow（进行中）
+
+`0.0.5` 当前先推进以下收敛项：
+
+- `OpHostCall` 支持从栈上传递参数对象给 host capability
+- `fs.read_file` / `network.http_fetch` 等 operation 可直接接收结构化参数
+- 后续继续推进 finally 语义保证、Host ABI typed adapter 与 class 继承
+
+---
+
 ## Documentation
 
 - Usage guide: [docs/usage-guide.md](docs/usage-guide.md)

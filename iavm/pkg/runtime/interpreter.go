@@ -401,6 +401,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			return fmt.Errorf("host.call operation must be string")
 		}
 		opName := opVal.Raw.(string)
+		callArgs := vm.popHostCallArgs(int(inst.A))
 
 		// Get capability ID from the last imported capability
 		var capID string
@@ -412,7 +413,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		req := api.CallRequest{
 			CapabilityID: capID,
 			Operation:    opName,
-			Args:         map[string]any{},
+			Args:         callArgs,
 		}
 
 		result, err := vm.options.Host.Call(context.Background(), req)
@@ -842,6 +843,79 @@ func lookupClassAccessor(classVal core.Value, tableKey, name string) (core.Value
 		current = parent
 	}
 	return core.Value{}, false
+}
+
+func (vm *VM) popHostCallArgs(argCount int) map[string]any {
+	if argCount <= 0 {
+		return map[string]any{}
+	}
+
+	args := make([]core.Value, argCount)
+	for i := argCount - 1; i >= 0; i-- {
+		args[i] = vm.stack.Pop()
+	}
+
+	if argCount == 1 && args[0].Kind == core.ValueObjectRef {
+		if mapped, ok := hostObjectArgs(args[0]); ok {
+			return mapped
+		}
+	}
+
+	result := make(map[string]any, argCount+1)
+	ordered := make([]any, 0, argCount)
+	for i, arg := range args {
+		converted := coreValueToHostAny(arg)
+		ordered = append(ordered, converted)
+		result[fmt.Sprintf("arg%d", i)] = converted
+	}
+	result["args"] = ordered
+	return result
+}
+
+func hostObjectArgs(v core.Value) (map[string]any, bool) {
+	if v.Kind != core.ValueObjectRef {
+		return nil, false
+	}
+	obj, ok := v.Raw.(map[string]core.Value)
+	if !ok {
+		return nil, false
+	}
+	result := make(map[string]any, len(obj))
+	for key, val := range obj {
+		if isReservedObjectKey(key) {
+			continue
+		}
+		result[key] = coreValueToHostAny(val)
+	}
+	return result, true
+}
+
+func coreValueToHostAny(v core.Value) any {
+	switch v.Kind {
+	case core.ValueNull:
+		return nil
+	case core.ValueBool, core.ValueI64, core.ValueF64, core.ValueString, core.ValueBytes, core.ValueHostHandle:
+		return v.Raw
+	case core.ValueArrayRef:
+		arr, ok := v.Raw.([]core.Value)
+		if !ok {
+			return nil
+		}
+		result := make([]any, 0, len(arr))
+		for _, item := range arr {
+			result = append(result, coreValueToHostAny(item))
+		}
+		return result
+	case core.ValueObjectRef:
+		if mapped, ok := hostObjectArgs(v); ok {
+			return mapped
+		}
+		return nil
+	case core.ValueFuncRef:
+		return map[string]any{"kind": "func_ref", "index": v.Raw}
+	default:
+		return v.Raw
+	}
 }
 
 func coreValueFromAny(v any) core.Value {

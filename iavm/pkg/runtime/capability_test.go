@@ -63,9 +63,9 @@ func TestCapability_AcquireAndCall(t *testing.T) {
 				TypeIndex: 0,
 				Constants: []any{"fs", "fs.read_file"},
 				Code: []core.Instruction{
-					{Op: core.OpImportCap, A: 0},  // acquire fs capability
-					{Op: core.OpConst, A: 1},      // push operation name
-					{Op: core.OpHostCall},         // call host
+					{Op: core.OpImportCap, A: 0}, // acquire fs capability
+					{Op: core.OpConst, A: 1},     // push operation name
+					{Op: core.OpHostCall},        // call host
 					{Op: core.OpReturn},
 				},
 			},
@@ -98,6 +98,52 @@ func TestCapability_AcquireAndCall(t *testing.T) {
 	val := vm.stack.Pop()
 	if val.Kind != core.ValueObjectRef {
 		t.Fatalf("expected object result, got %v", val.Kind)
+	}
+}
+
+func TestCapability_HostCallPassesObjectArgs(t *testing.T) {
+	host := newMockHost()
+	host.callResult = api.CallResult{Value: map[string]any{"ok": true}}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"path", "/workspace/demo.txt", "fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	if len(host.callLog) != 1 {
+		t.Fatalf("expected 1 host call, got %d", len(host.callLog))
+	}
+	if got := host.callLog[0].Args["path"]; got != "/workspace/demo.txt" {
+		t.Fatalf("expected path arg to be propagated, got %#v", got)
 	}
 }
 

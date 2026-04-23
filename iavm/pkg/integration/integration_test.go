@@ -173,6 +173,69 @@ func TestFullPipeline_WithHostCapability(t *testing.T) {
 	}
 }
 
+func TestFullPipeline_WithHostCapabilityArgs(t *testing.T) {
+	host := newMockHost()
+	host.callResult = api.CallResult{Value: map[string]any{"status": "ok"}}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"path", "/workspace/hello.txt", "fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	result, err := binary.VerifyModule(mod, binary.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("VerifyModule failed: %v", err)
+	}
+	if !result.Valid {
+		t.Fatal("module not valid")
+	}
+
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule failed: %v", err)
+	}
+	decoded, err := binary.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("DecodeModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(decoded, runtime.Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("VM.Run with host args failed: %v", err)
+	}
+
+	if len(host.callLog) != 1 {
+		t.Fatalf("expected 1 host call, got %d", len(host.callLog))
+	}
+	if got := host.callLog[0].Args["path"]; got != "/workspace/hello.txt" {
+		t.Fatalf("expected path arg after encode/decode, got %#v", got)
+	}
+}
+
 func TestFullPipeline_EncodeDecodeVerify(t *testing.T) {
 	original := &module.Module{
 		Magic:      "IAVM",
@@ -572,11 +635,11 @@ func TestFullPipeline_IfElse(t *testing.T) {
 	// if (true) { 42 } else { 99 }
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpConstant, A: 0, B: 0},     // push true
-			{Op: bytecode.OpJumpIfFalse, A: 5, B: 0},  // if false, jump to else
-			{Op: bytecode.OpConstant, A: 1, B: 0},     // push 42 (then branch)
-			{Op: bytecode.OpJump, A: 6, B: 0},         // jump over else
-			{Op: bytecode.OpConstant, A: 2, B: 0},     // push 99 (else branch)
+			{Op: bytecode.OpConstant, A: 0, B: 0},    // push true
+			{Op: bytecode.OpJumpIfFalse, A: 5, B: 0}, // if false, jump to else
+			{Op: bytecode.OpConstant, A: 1, B: 0},    // push 42 (then branch)
+			{Op: bytecode.OpJump, A: 6, B: 0},        // jump over else
+			{Op: bytecode.OpConstant, A: 2, B: 0},    // push 99 (else branch)
 			{Op: bytecode.OpReturn},
 		},
 		Constants: []any{true, float64(42), float64(99)},
@@ -612,10 +675,10 @@ func TestFullPipeline_WhileLoop(t *testing.T) {
 	// return sum; // should be 0+1+2 = 3
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpConstant, A: 0, B: 0},     // push 0
-			{Op: bytecode.OpDefineName, A: 1, B: 0},   // define i = 0
-			{Op: bytecode.OpConstant, A: 0, B: 0},     // push 0
-			{Op: bytecode.OpDefineName, A: 2, B: 0},   // define sum = 0
+			{Op: bytecode.OpConstant, A: 0, B: 0},   // push 0
+			{Op: bytecode.OpDefineName, A: 1, B: 0}, // define i = 0
+			{Op: bytecode.OpConstant, A: 0, B: 0},   // push 0
+			{Op: bytecode.OpDefineName, A: 2, B: 0}, // define sum = 0
 			// loop condition: i < 3
 			{Op: bytecode.OpGetName, A: 1, B: 0},      // push i
 			{Op: bytecode.OpConstant, A: 3, B: 0},     // push 3
@@ -624,14 +687,14 @@ func TestFullPipeline_WhileLoop(t *testing.T) {
 			// loop body: sum = sum + i
 			{Op: bytecode.OpGetName, A: 2, B: 0}, // push sum
 			{Op: bytecode.OpGetName, A: 1, B: 0}, // push i
-			{Op: bytecode.OpAdd},                  // sum + i
+			{Op: bytecode.OpAdd},                 // sum + i
 			{Op: bytecode.OpSetName, A: 2, B: 0}, // sum = ...
 			// loop body: i = i + 1
-			{Op: bytecode.OpGetName, A: 1, B: 0}, // push i
+			{Op: bytecode.OpGetName, A: 1, B: 0},  // push i
 			{Op: bytecode.OpConstant, A: 4, B: 0}, // push 1
 			{Op: bytecode.OpAdd},                  // i + 1
-			{Op: bytecode.OpSetName, A: 1, B: 0}, // i = ...
-			{Op: bytecode.OpJump, A: 4, B: 0},    // jump back to condition
+			{Op: bytecode.OpSetName, A: 1, B: 0},  // i = ...
+			{Op: bytecode.OpJump, A: 4, B: 0},     // jump back to condition
 			// end
 			{Op: bytecode.OpGetName, A: 2, B: 0}, // push sum
 			{Op: bytecode.OpReturn},
@@ -667,12 +730,12 @@ func TestFullPipeline_ObjectPropertyAccess(t *testing.T) {
 	// let obj = {x: 10}; return obj.x;
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpObject},                   // push empty object
-			{Op: bytecode.OpDup},                      // dup object
-			{Op: bytecode.OpConstant, A: 1, B: 0},     // push 10
-			{Op: bytecode.OpSetProperty, A: 0, B: 0},  // obj.x = 10
-			{Op: bytecode.OpDup},                      // dup object
-			{Op: bytecode.OpGetProperty, A: 0, B: 0},  // obj.x
+			{Op: bytecode.OpObject},                  // push empty object
+			{Op: bytecode.OpDup},                     // dup object
+			{Op: bytecode.OpConstant, A: 1, B: 0},    // push 10
+			{Op: bytecode.OpSetProperty, A: 0, B: 0}, // obj.x = 10
+			{Op: bytecode.OpDup},                     // dup object
+			{Op: bytecode.OpGetProperty, A: 0, B: 0}, // obj.x
 			{Op: bytecode.OpReturn},
 		},
 		Constants: []any{"x", float64(10)},
@@ -706,16 +769,16 @@ func TestFullPipeline_ObjectPropertyMultiple(t *testing.T) {
 	// let user = {name: "alice", score: 10}; print(user.name);
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpObject},                      // push empty object
-			{Op: bytecode.OpDup},                         // dup for set
-			{Op: bytecode.OpConstant, A: 0, B: 0},        // push "alice"
-			{Op: bytecode.OpSetProperty, A: 1, B: 0},     // obj.name = "alice"
-			{Op: bytecode.OpDup},                         // dup for set
-			{Op: bytecode.OpConstant, A: 2, B: 0},        // push 10
-			{Op: bytecode.OpSetProperty, A: 3, B: 0},     // obj.score = 10
-			{Op: bytecode.OpDefineName, A: 4, B: 0},      // define user
-			{Op: bytecode.OpGetName, A: 4, B: 0},         // load user
-			{Op: bytecode.OpGetProperty, A: 1, B: 0},     // user.name
+			{Op: bytecode.OpObject},                  // push empty object
+			{Op: bytecode.OpDup},                     // dup for set
+			{Op: bytecode.OpConstant, A: 0, B: 0},    // push "alice"
+			{Op: bytecode.OpSetProperty, A: 1, B: 0}, // obj.name = "alice"
+			{Op: bytecode.OpDup},                     // dup for set
+			{Op: bytecode.OpConstant, A: 2, B: 0},    // push 10
+			{Op: bytecode.OpSetProperty, A: 3, B: 0}, // obj.score = 10
+			{Op: bytecode.OpDefineName, A: 4, B: 0},  // define user
+			{Op: bytecode.OpGetName, A: 4, B: 0},     // load user
+			{Op: bytecode.OpGetProperty, A: 1, B: 0}, // user.name
 			{Op: bytecode.OpReturn},
 		},
 		Constants: []any{"alice", "name", float64(10), "score", "user"},
@@ -751,12 +814,12 @@ func TestFullPipeline_ObjectIndexAccess(t *testing.T) {
 		Code: []bytecode.Instruction{
 			{Op: bytecode.OpObject},
 			{Op: bytecode.OpDup},
-			{Op: bytecode.OpConstant, A: 0, B: 0},        // "shanghai"
-			{Op: bytecode.OpSetProperty, A: 1, B: 0},     // obj.city = "shanghai"
-			{Op: bytecode.OpDefineName, A: 2, B: 0},      // define user
-			{Op: bytecode.OpGetName, A: 2, B: 0},         // load user
-			{Op: bytecode.OpConstant, A: 1, B: 0},        // "city"
-			{Op: bytecode.OpIndex},                       // user["city"]
+			{Op: bytecode.OpConstant, A: 0, B: 0},    // "shanghai"
+			{Op: bytecode.OpSetProperty, A: 1, B: 0}, // obj.city = "shanghai"
+			{Op: bytecode.OpDefineName, A: 2, B: 0},  // define user
+			{Op: bytecode.OpGetName, A: 2, B: 0},     // load user
+			{Op: bytecode.OpConstant, A: 1, B: 0},    // "city"
+			{Op: bytecode.OpIndex},                   // user["city"]
 			{Op: bytecode.OpReturn},
 		},
 		Constants: []any{"shanghai", "city", "user"},
@@ -791,44 +854,44 @@ func TestFullPipeline_DataIaPattern(t *testing.T) {
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
 			// let arr = [1, 2, 3, 4]
-			{Op: bytecode.OpConstant, A: 0, B: 0},  // 1
-			{Op: bytecode.OpConstant, A: 1, B: 0},  // 2
-			{Op: bytecode.OpConstant, A: 2, B: 0},  // 3
-			{Op: bytecode.OpConstant, A: 3, B: 0},  // 4
-			{Op: bytecode.OpArray, A: 4, B: 0},     // [1,2,3,4]
+			{Op: bytecode.OpConstant, A: 0, B: 0},   // 1
+			{Op: bytecode.OpConstant, A: 1, B: 0},   // 2
+			{Op: bytecode.OpConstant, A: 2, B: 0},   // 3
+			{Op: bytecode.OpConstant, A: 3, B: 0},   // 4
+			{Op: bytecode.OpArray, A: 4, B: 0},      // [1,2,3,4]
 			{Op: bytecode.OpDefineName, A: 4, B: 0}, // define arr
 			// arr[0]
-			{Op: bytecode.OpGetName, A: 4, B: 0},   // load arr
-			{Op: bytecode.OpConstant, A: 5, B: 0},  // 0
-			{Op: bytecode.OpIndex},                  // arr[0]
-			{Op: bytecode.OpPop},                    // discard
+			{Op: bytecode.OpGetName, A: 4, B: 0},  // load arr
+			{Op: bytecode.OpConstant, A: 5, B: 0}, // 0
+			{Op: bytecode.OpIndex},                // arr[0]
+			{Op: bytecode.OpPop},                  // discard
 			// let user = {name: "alice", score: 10, city: "shanghai"}
-			{Op: bytecode.OpObject},                                // {}
-			{Op: bytecode.OpDup},                                   // dup
-			{Op: bytecode.OpConstant, A: 6, B: 0},                  // "alice"
-			{Op: bytecode.OpSetProperty, A: 7, B: 0},              // .name = "alice"
-			{Op: bytecode.OpDup},                                   // dup
-			{Op: bytecode.OpConstant, A: 8, B: 0},                  // 10
-			{Op: bytecode.OpSetProperty, A: 9, B: 0},              // .score = 10
-			{Op: bytecode.OpDup},                                   // dup
-			{Op: bytecode.OpConstant, A: 10, B: 0},                 // "shanghai"
-			{Op: bytecode.OpSetProperty, A: 11, B: 0},             // .city = "shanghai"
-			{Op: bytecode.OpDefineName, A: 12, B: 0},               // define user
+			{Op: bytecode.OpObject},                   // {}
+			{Op: bytecode.OpDup},                      // dup
+			{Op: bytecode.OpConstant, A: 6, B: 0},     // "alice"
+			{Op: bytecode.OpSetProperty, A: 7, B: 0},  // .name = "alice"
+			{Op: bytecode.OpDup},                      // dup
+			{Op: bytecode.OpConstant, A: 8, B: 0},     // 10
+			{Op: bytecode.OpSetProperty, A: 9, B: 0},  // .score = 10
+			{Op: bytecode.OpDup},                      // dup
+			{Op: bytecode.OpConstant, A: 10, B: 0},    // "shanghai"
+			{Op: bytecode.OpSetProperty, A: 11, B: 0}, // .city = "shanghai"
+			{Op: bytecode.OpDefineName, A: 12, B: 0},  // define user
 			// user.name
-			{Op: bytecode.OpGetName, A: 12, B: 0},                 // load user
-			{Op: bytecode.OpGetProperty, A: 7, B: 0},              // .name
-			{Op: bytecode.OpPop},                                   // discard
+			{Op: bytecode.OpGetName, A: 12, B: 0},    // load user
+			{Op: bytecode.OpGetProperty, A: 7, B: 0}, // .name
+			{Op: bytecode.OpPop},                     // discard
 			// user["city"]
-			{Op: bytecode.OpGetName, A: 12, B: 0},                 // load user
-			{Op: bytecode.OpConstant, A: 11, B: 0},                 // "city"
-			{Op: bytecode.OpIndex},                                 // ["city"]
-			{Op: bytecode.OpPop},                                   // discard
+			{Op: bytecode.OpGetName, A: 12, B: 0},  // load user
+			{Op: bytecode.OpConstant, A: 11, B: 0}, // "city"
+			{Op: bytecode.OpIndex},                 // ["city"]
+			{Op: bytecode.OpPop},                   // discard
 			// let key = "score"; user[key]
-			{Op: bytecode.OpConstant, A: 9, B: 0},                  // "score"
-			{Op: bytecode.OpDefineName, A: 13, B: 0},               // define key
-			{Op: bytecode.OpGetName, A: 12, B: 0},                 // load user
-			{Op: bytecode.OpGetName, A: 13, B: 0},                 // load key
-			{Op: bytecode.OpIndex},                                 // [key]
+			{Op: bytecode.OpConstant, A: 9, B: 0},    // "score"
+			{Op: bytecode.OpDefineName, A: 13, B: 0}, // define key
+			{Op: bytecode.OpGetName, A: 12, B: 0},    // load user
+			{Op: bytecode.OpGetName, A: 13, B: 0},    // load key
+			{Op: bytecode.OpIndex},                   // [key]
 			{Op: bytecode.OpReturn},
 		},
 		Constants: []any{
@@ -867,11 +930,11 @@ func TestFullPipeline_TryCatch(t *testing.T) {
 	// try { throw "err"; } catch (e) { return 42; }
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpPushTry, A: 4, B: 0},    // catch handler at instruction 4
-			{Op: bytecode.OpConstant, A: 0, B: 0},   // push "err"
-			{Op: bytecode.OpThrow},                  // throw
-			{Op: bytecode.OpPopTry},                 // pop try (unreachable in normal flow)
-			{Op: bytecode.OpConstant, A: 1, B: 0},   // push 42 (catch handler)
+			{Op: bytecode.OpPushTry, A: 4, B: 0},  // catch handler at instruction 4
+			{Op: bytecode.OpConstant, A: 0, B: 0}, // push "err"
+			{Op: bytecode.OpThrow},                // throw
+			{Op: bytecode.OpPopTry},               // pop try (unreachable in normal flow)
+			{Op: bytecode.OpConstant, A: 1, B: 0}, // push 42 (catch handler)
 			{Op: bytecode.OpReturn},
 		},
 		Constants: []any{"err", float64(42)},
@@ -905,11 +968,11 @@ func TestFullPipeline_TryCatchExceptionValue(t *testing.T) {
 	// try { throw "bad"; } catch (e) { return e; }
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpPushTry, A: 4, B: 0},    // catch handler at instruction 4
-			{Op: bytecode.OpConstant, A: 0, B: 0},   // push "bad"
-			{Op: bytecode.OpThrow},                  // throw
-			{Op: bytecode.OpPopTry},                 // pop try (unreachable)
-			{Op: bytecode.OpReturn},                 // return e (e is on stack from catch)
+			{Op: bytecode.OpPushTry, A: 4, B: 0},  // catch handler at instruction 4
+			{Op: bytecode.OpConstant, A: 0, B: 0}, // push "bad"
+			{Op: bytecode.OpThrow},                // throw
+			{Op: bytecode.OpPopTry},               // pop try (unreachable)
+			{Op: bytecode.OpReturn},               // return e (e is on stack from catch)
 		},
 		Constants: []any{"bad"},
 	}
@@ -981,7 +1044,7 @@ func TestFullPipeline_ExportedGlobalVariable(t *testing.T) {
 	// let x = 42; export x;
 	chunk := &bytecode.Chunk{
 		Code: []bytecode.Instruction{
-			{Op: bytecode.OpConstant, A: 0, B: 0}, // push 42
+			{Op: bytecode.OpConstant, A: 0, B: 0},   // push 42
 			{Op: bytecode.OpDefineName, A: 1, B: 0}, // define x
 			{Op: bytecode.OpExportName, A: 1, B: 0}, // export x
 			{Op: bytecode.OpReturn},
