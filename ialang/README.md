@@ -97,13 +97,73 @@ done
 | `[verify]` | 模块验证 / policy 检查失败 |
 | `[runtime]` | VM 执行阶段失败 |
 
-### 已知限制
+### 已知限制（0.0.2 时点）
 
 - **外部模块导入不支持**：使用 `import { x } from "@agent/sdk"` 的示例（如 `hello.ia`）会因 `cannot get property from non-object` 在运行时失败。IAVM 当前不支持外部模块系统。
-- **字符串拼接类型限制**：`addValues` 不支持 string + number 隐式转换，字符串拼接需使用 `str()` 内建函数。
-- **数组索引类型**：IAVM 数组索引要求整数类型（I64），浮点数索引会报错。
+- **字符串拼接类型限制**：`addValues` 不支持 string + number 隐式转换，字符串拼接需使用 `str()` 内建函数。（已在 0.0.3 修复）
+- **数组索引类型**：IAVM 数组索引要求整数类型（I64），浮点数索引会报错。（已在 0.0.3 修复）
 
 For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.2-platform-hardening-plan.md`.
+
+---
+
+## 0.0.3 Runtime Semantics
+
+`0.0.3` 在 `0.0.2` 平台硬化基础上修复 IAVM runtime 的核心语义缺陷，使更多 ialang 示例能稳定通过 build/verify/run 全流程。
+
+### 修复内容
+
+| 修复项 | 说明 |
+|--------|------|
+| 跨类型值运算 | `addValues` 支持 string+string、string+number、I64+F64；所有算术/比较运算支持 I64/F64 混合 |
+| F64 索引兼容 | `OpIndex` 接受 F64 索引，自动截断为整数 |
+| 闭包函数引用 | `lowerFunction` 传递 `funcMap`，函数体内的 `OpClosure` 正确降级为函数引用 |
+| catch 变量绑定 | `OpPushTry` 存储 catch 变量 local index，异常恢复时绑定到 local slot |
+
+### IAVM 示例矩阵
+
+| 示例 | 路径 | 覆盖维度 | 推荐 Profile | 期望输出 |
+|------|------|----------|:---:|---|
+| 最小示例 | `examples/iavm_hello.ia` | if/else + print | sandbox | `iavm hello` |
+| 控制流 | `examples/iavm_control.ia` | while / if / && | sandbox | `while-ok` `logic-ok` |
+| 函数调用 | `examples/iavm_function.ia` | function 定义与调用 | sandbox | `func-ok` |
+| 算术运算 | `examples/iavm_arith.ia` | 算术 + 条件判断 | sandbox | `array-ok` |
+| 控制流（旧） | `examples/control.ia` | while + if/else + string 拼接 | sandbox | `sum ok: 10` |
+| 比较运算（旧） | `examples/comparison.ia` | <= / >= / && / 三元 | sandbox | `=== comparison operator tests done ===` |
+| 运算符（旧） | `examples/operators.ia` | 算术 + 三元 + 优先级 | sandbox | `=== operator tests done ===` |
+
+### 0.0.3 smoke 命令
+
+```bash
+go build -o ./bin/ialang ./ialang/cmd/ialang
+
+# 0.0.2 矩阵（必须继续通过）
+for ex in iavm_hello iavm_control iavm_function iavm_arith; do
+  ./bin/ialang build-iavm ./ialang/examples/$ex.ia -o ./tmp/$ex.iavm
+  ./bin/ialang verify-iavm ./tmp/$ex.iavm --profile sandbox
+  ./bin/ialang run-iavm ./tmp/$ex.iavm --profile sandbox
+done
+
+# 0.0.3 新增矩阵
+for ex in control comparison operators; do
+  ./bin/ialang build-iavm ./ialang/examples/$ex.ia -o ./tmp/$ex.iavm
+  ./bin/ialang verify-iavm ./tmp/$ex.iavm --profile sandbox
+  ./bin/ialang run-iavm ./tmp/$ex.iavm --profile sandbox
+done
+```
+
+### 已知限制（0.0.3 后）
+
+- **外部模块导入不支持**：`hello.ia` 等使用外部 import 的示例不可运行。
+- **对象属性访问**：`data.ia` 中 `user.name` 返回 null（lowering 常量池映射问题）。
+- **位运算要求 I64**：`bitwise.ia` 中位运算结果为 null（编译器发射 F64）。
+- **闭包 upvalue 捕获**：`OpClosure` 仅传递函数引用，不捕获词法环境（upvalue）。
+- **finally 块执行保证**：`try/finally` 的 finally 块在异常路径中不保证执行。
+- **async/await 在 IAVM 中不可用**：`try_catch.ia` 等使用 async 的示例不可运行。
+
+For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.3-runtime-semantics-plan.md`.
+
+---
 
 ## Documentation
 

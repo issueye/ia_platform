@@ -35,22 +35,27 @@ func Interpret(vm *VM, entryFuncIndex uint32) error {
 
 		if err := vm.dispatch(inst, frame); err != nil {
 			if err == core.ErrUncaughtException {
-				// Attempt exception recovery by unwinding to the nearest try handler
 				handled := false
 				for len(vm.frames) > 0 {
 					currentFrame := vm.frames[len(vm.frames)-1]
 					if len(currentFrame.TryHandlers) > 0 {
-						// Pop the nearest try handler and jump to it
 						handlerIdx := len(currentFrame.TryHandlers) - 1
-						handlerIP := currentFrame.TryHandlers[handlerIdx]
+						handler := currentFrame.TryHandlers[handlerIdx]
 						currentFrame.TryHandlers = currentFrame.TryHandlers[:handlerIdx]
-						currentFrame.IP = handlerIP
-						vm.stack.Push(vm.exception)
+						currentFrame.IP = handler.HandlerIP
+						if handler.HasCatchVar {
+							if int(handler.CatchLocalIdx) < len(currentFrame.Locals) {
+								currentFrame.Locals[handler.CatchLocalIdx] = vm.exception
+							} else {
+								vm.stack.Push(vm.exception)
+							}
+						} else {
+							vm.stack.Push(vm.exception)
+						}
 						vm.exception = core.Value{Kind: core.ValueNull}
 						handled = true
 						break
 					}
-					// No handler in current frame; pop and continue unwinding
 					vm.frames = vm.frames[:len(vm.frames)-1]
 				}
 				if handled {
@@ -439,7 +444,12 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 
 	case core.OpPushTry:
-		frame.TryHandlers = append(frame.TryHandlers, inst.A)
+		handler := TryHandler{HandlerIP: inst.A}
+		if inst.B > 0 {
+			handler.CatchLocalIdx = inst.B - 1
+			handler.HasCatchVar = true
+		}
+		frame.TryHandlers = append(frame.TryHandlers, handler)
 
 	case core.OpPopTry:
 		if len(frame.TryHandlers) > 0 {
@@ -451,10 +461,10 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		targetVal := vm.stack.Pop()
 		switch targetVal.Kind {
 		case core.ValueArrayRef:
-			if indexVal.Kind != core.ValueI64 {
-				return fmt.Errorf("array index must be integer, got %v", indexVal.Kind)
+			idx, ok := toIntIndex(indexVal)
+			if !ok {
+				return fmt.Errorf("array index must be numeric, got %v", indexVal.Kind)
 			}
-			idx := int(indexVal.Raw.(int64))
 			arr := targetVal.Raw.([]core.Value)
 			if idx < 0 || idx >= len(arr) {
 				vm.stack.Push(core.Value{Kind: core.ValueNull})
@@ -473,10 +483,10 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 				vm.stack.Push(core.Value{Kind: core.ValueNull})
 			}
 		case core.ValueString:
-			if indexVal.Kind != core.ValueI64 {
-				return fmt.Errorf("string index must be integer, got %v", indexVal.Kind)
+			idx, ok := toIntIndex(indexVal)
+			if !ok {
+				return fmt.Errorf("string index must be numeric, got %v", indexVal.Kind)
 			}
-			idx := int(indexVal.Raw.(int64))
 			s := targetVal.Raw.(string)
 			if idx < 0 || idx >= len(s) {
 				vm.stack.Push(core.Value{Kind: core.ValueNull})
@@ -535,62 +545,77 @@ func coreValueFromAny(v any) core.Value {
 	}
 }
 
-func addValues(a, b core.Value) core.Value {
-	switch a.Kind {
-	case core.ValueI64:
-		if b.Kind == core.ValueI64 {
-			return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) + b.Raw.(int64)}
-		}
+func toFloat(v core.Value) (float64, bool) {
+	switch v.Kind {
 	case core.ValueF64:
-		if b.Kind == core.ValueF64 {
-			return core.Value{Kind: core.ValueF64, Raw: a.Raw.(float64) + b.Raw.(float64)}
-		}
+		return v.Raw.(float64), true
+	case core.ValueI64:
+		return float64(v.Raw.(int64)), true
+	}
+	return 0, false
+}
+
+func toIntIndex(v core.Value) (int, bool) {
+	switch v.Kind {
+	case core.ValueI64:
+		return int(v.Raw.(int64)), true
+	case core.ValueF64:
+		return int(v.Raw.(float64)), true
+	}
+	return 0, false
+}
+
+func addValues(a, b core.Value) core.Value {
+	if a.Kind == core.ValueString || b.Kind == core.ValueString {
+		return core.Value{Kind: core.ValueString, Raw: valueToString(a) + valueToString(b)}
+	}
+	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
+		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) + b.Raw.(int64)}
+	}
+	af, aok := toFloat(a)
+	bf, bok := toFloat(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueF64, Raw: af + bf}
 	}
 	return core.Value{Kind: core.ValueNull}
 }
 
 func subValues(a, b core.Value) core.Value {
-	switch a.Kind {
-	case core.ValueI64:
-		if b.Kind == core.ValueI64 {
-			return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) - b.Raw.(int64)}
-		}
-	case core.ValueF64:
-		if b.Kind == core.ValueF64 {
-			return core.Value{Kind: core.ValueF64, Raw: a.Raw.(float64) - b.Raw.(float64)}
-		}
+	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
+		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) - b.Raw.(int64)}
+	}
+	af, aok := toFloat(a)
+	bf, bok := toFloat(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueF64, Raw: af - bf}
 	}
 	return core.Value{Kind: core.ValueNull}
 }
 
 func mulValues(a, b core.Value) core.Value {
-	switch a.Kind {
-	case core.ValueI64:
-		if b.Kind == core.ValueI64 {
-			return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) * b.Raw.(int64)}
-		}
-	case core.ValueF64:
-		if b.Kind == core.ValueF64 {
-			return core.Value{Kind: core.ValueF64, Raw: a.Raw.(float64) * b.Raw.(float64)}
-		}
+	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
+		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) * b.Raw.(int64)}
+	}
+	af, aok := toFloat(a)
+	bf, bok := toFloat(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueF64, Raw: af * bf}
 	}
 	return core.Value{Kind: core.ValueNull}
 }
 
 func divValues(a, b core.Value) core.Value {
-	switch a.Kind {
-	case core.ValueI64:
-		if b.Kind == core.ValueI64 {
-			bv := b.Raw.(int64)
-			if bv == 0 {
-				return core.Value{Kind: core.ValueNull}
-			}
-			return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) / bv}
+	if a.Kind == core.ValueI64 && b.Kind == core.ValueI64 {
+		bv := b.Raw.(int64)
+		if bv == 0 {
+			return core.Value{Kind: core.ValueNull}
 		}
-	case core.ValueF64:
-		if b.Kind == core.ValueF64 {
-			return core.Value{Kind: core.ValueF64, Raw: a.Raw.(float64) / b.Raw.(float64)}
-		}
+		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) / bv}
+	}
+	af, aok := toFloat(a)
+	bf, bok := toFloat(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueF64, Raw: af / bf}
 	}
 	return core.Value{Kind: core.ValueNull}
 }
@@ -602,6 +627,11 @@ func modValues(a, b core.Value) core.Value {
 			return core.Value{Kind: core.ValueNull}
 		}
 		return core.Value{Kind: core.ValueI64, Raw: a.Raw.(int64) % bv}
+	}
+	af, aok := toFloat(a)
+	bf, bok := toFloat(b)
+	if aok && bok {
+		return core.Value{Kind: core.ValueF64, Raw: float64(int64(af) % int64(bf))}
 	}
 	return core.Value{Kind: core.ValueNull}
 }
@@ -621,39 +651,38 @@ func notValue(a core.Value) core.Value {
 }
 
 func valuesEqual(a, b core.Value) bool {
-	if a.Kind != b.Kind {
-		return false
+	if a.Kind == b.Kind {
+		switch a.Kind {
+		case core.ValueNull:
+			return true
+		case core.ValueBool:
+			return a.Raw.(bool) == b.Raw.(bool)
+		case core.ValueI64:
+			return a.Raw.(int64) == b.Raw.(int64)
+		case core.ValueF64:
+			return a.Raw.(float64) == b.Raw.(float64)
+		case core.ValueString:
+			return a.Raw.(string) == b.Raw.(string)
+		default:
+			return a.Raw == b.Raw
+		}
 	}
-	switch a.Kind {
-	case core.ValueNull:
-		return true
-	case core.ValueBool:
-		return a.Raw.(bool) == b.Raw.(bool)
-	case core.ValueI64:
-		return a.Raw.(int64) == b.Raw.(int64)
-	case core.ValueF64:
-		return a.Raw.(float64) == b.Raw.(float64)
-	case core.ValueString:
-		return a.Raw.(string) == b.Raw.(string)
-	default:
-		return a.Raw == b.Raw
+	af, aok := toFloat(a)
+	bf, bok := toFloat(b)
+	if aok && bok {
+		return af == bf
 	}
+	return false
 }
 
 func valuesLess(a, b core.Value) bool {
-	switch a.Kind {
-	case core.ValueI64:
-		if b.Kind == core.ValueI64 {
-			return a.Raw.(int64) < b.Raw.(int64)
-		}
-	case core.ValueF64:
-		if b.Kind == core.ValueF64 {
-			return a.Raw.(float64) < b.Raw.(float64)
-		}
-	case core.ValueString:
-		if b.Kind == core.ValueString {
-			return a.Raw.(string) < b.Raw.(string)
-		}
+	if a.Kind == core.ValueString && b.Kind == core.ValueString {
+		return a.Raw.(string) < b.Raw.(string)
+	}
+	af, aok := toFloat(a)
+	bf, bok := toFloat(b)
+	if aok && bok {
+		return af < bf
 	}
 	return false
 }

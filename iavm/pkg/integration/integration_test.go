@@ -777,6 +777,45 @@ func TestFullPipeline_TryCatchExceptionValue(t *testing.T) {
 	}
 }
 
+func TestFullPipeline_TryCatchBindVariable(t *testing.T) {
+	// try { throw "oops"; } catch (e) { print(e); }
+	catchNameIdx := 1
+	chunk := &bytecode.Chunk{
+		Code: []bytecode.Instruction{
+			{Op: bytecode.OpPushTry, A: 4, B: catchNameIdx},
+			{Op: bytecode.OpConstant, A: 0, B: 0},
+			{Op: bytecode.OpThrow},
+			{Op: bytecode.OpPopTry},
+			{Op: bytecode.OpGetName, A: catchNameIdx, B: 0},
+			{Op: bytecode.OpReturn},
+		},
+		Constants: []any{"oops", "e"},
+	}
+
+	mod, err := bridge_ialang.LowerToModule(chunk)
+	if err != nil {
+		t.Fatalf("LowerToModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(mod, runtime.Options{})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueString || val.Raw.(string) != "oops" {
+		t.Fatalf("expected 'oops', got %v", val)
+	}
+}
+
 func TestFullPipeline_ExportedGlobalVariable(t *testing.T) {
 	// let x = 42; export x;
 	chunk := &bytecode.Chunk{

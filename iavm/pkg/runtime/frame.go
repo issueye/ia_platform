@@ -5,12 +5,18 @@ import (
 	"iavm/pkg/module"
 )
 
+type TryHandler struct {
+	HandlerIP     uint32
+	CatchLocalIdx uint32
+	HasCatchVar   bool
+}
+
 type Frame struct {
 	FunctionIndex uint32
 	IP            uint32
 	Locals        []core.Value
 	BasePointer   uint32
-	TryHandlers   []uint32 // stack of try handler IP addresses
+	TryHandlers   []TryHandler
 }
 
 func NewFrame(fnIndex uint32, fn *module.Function, baseSP uint32) *Frame {
@@ -23,6 +29,6 @@ func NewFrame(fnIndex uint32, fn *module.Function, baseSP uint32) *Frame {
 		IP:            0,
 		Locals:        locals,
 		BasePointer:   baseSP,
-		TryHandlers:   make([]uint32, 0, 4),
+		TryHandlers:   make([]TryHandler, 0, 4),
 	}
 }

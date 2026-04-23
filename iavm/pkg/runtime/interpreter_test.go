@@ -1622,7 +1622,7 @@ func TestInterpret_Closure(t *testing.T) {
 				Name:      "entry",
 				TypeIndex: 1,
 				Code: []core.Instruction{
-					{Op: core.OpClosure, A: 0}, // load function reference to target
+					{Op: core.OpClosure, A: 0},
 					{Op: core.OpCall, A: 0, B: 0},
 					{Op: core.OpReturn},
 				},
@@ -1643,5 +1643,220 @@ func TestInterpret_Closure(t *testing.T) {
 	val := vm.stack.Pop()
 	if val.Kind != core.ValueI64 || val.Raw.(int64) != 42 {
 		t.Fatalf("expected 42, got %v", val)
+	}
+}
+
+func TestInterpret_AddStringConcat(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{"hello ", "world"},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1},
+				{Op: core.OpAdd}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueString || val.Raw.(string) != "hello world" {
+		t.Fatalf("expected 'hello world', got %v", val)
+	}
+}
+
+func TestInterpret_AddStringNumber(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{"count: ", int64(42)},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1},
+				{Op: core.OpAdd}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueString || val.Raw.(string) != "count: 42" {
+		t.Fatalf("expected 'count: 42', got %v", val)
+	}
+}
+
+func TestInterpret_AddI64F64(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{int64(3), float64(2.5)},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1},
+				{Op: core.OpAdd}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueF64 || val.Raw.(float64) != 5.5 {
+		t.Fatalf("expected F64(5.5), got %v", val)
+	}
+}
+
+func TestInterpret_CompareI64F64(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{int64(3), float64(5.0)},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1},
+				{Op: core.OpLt}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueBool || !val.Raw.(bool) {
+		t.Fatalf("expected true, got %v", val)
+	}
+}
+
+func TestInterpret_EqualI64F64(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{int64(5), float64(5.0)},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1},
+				{Op: core.OpEq}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueBool || !val.Raw.(bool) {
+		t.Fatalf("expected true, got %v", val)
+	}
+}
+
+func TestInterpret_F64ArrayIndex(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{int64(10), int64(20), int64(30), float64(1)},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1}, {Op: core.OpConst, A: 2},
+				{Op: core.OpMakeArray, A: 3},
+				{Op: core.OpConst, A: 3}, {Op: core.OpIndex}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueI64 || val.Raw.(int64) != 20 {
+		t.Fatalf("expected 20, got %v", val)
+	}
+}
+
+func TestInterpret_TryCatch_BindCatchVar(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"error_value"},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Locals:    []core.ValueKind{core.ValueNull},
+			Constants: []any{"error_value"},
+			Code: []core.Instruction{
+				{Op: core.OpPushTry, A: 3, B: 1},
+				{Op: core.OpConst, A: 0},
+				{Op: core.OpThrow},
+				{Op: core.OpPopTry},
+				{Op: core.OpLoadLocal, A: 0},
+				{Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueString || val.Raw.(string) != "error_value" {
+		t.Fatalf("expected 'error_value', got %v", val)
+	}
+}
+
+func TestInterpret_F64StringIndex(t *testing.T) {
+	mod := &module.Module{
+		Magic: "IAVM", Version: 1, Target: "ialang",
+		Types: []core.FuncType{{}},
+		Functions: []module.Function{{
+			Name: "entry", TypeIndex: 0,
+			Constants: []any{"hello", float64(1)},
+			Code: []core.Instruction{
+				{Op: core.OpConst, A: 0}, {Op: core.OpConst, A: 1},
+				{Op: core.OpIndex}, {Op: core.OpReturn},
+			},
+		}},
+	}
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	val := vm.stack.Pop()
+	if val.Kind != core.ValueString || val.Raw.(string) != "e" {
+		t.Fatalf("expected 'e', got %v", val)
 	}
 }

@@ -1501,3 +1501,102 @@ func TestRunCLIHelloIaExternalImportRuntimeError(t *testing.T) {
 		t.Fatalf("hello.ia expected runtime error about non-object, got: %s", stderr.String())
 	}
 }
+
+func TestRunCLIControlExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "control.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "control.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm control.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm control.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm control.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "sum ok: 10") {
+		t.Fatalf("control.ia output missing 'sum ok: 10': %q", runOutput)
+	}
+	if !strings.Contains(runOutput, "neq works") {
+		t.Fatalf("control.ia output missing 'neq works': %q", runOutput)
+	}
+}
+
+func TestRunCLIComparisonExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "comparison.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "comparison.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm comparison.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm comparison.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm comparison.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "=== comparison operator tests done ===") {
+		t.Fatalf("comparison.ia output missing completion marker: %q", runOutput)
+	}
+	if !strings.Contains(runOutput, "score 85 => grade B") {
+		t.Fatalf("comparison.ia output missing 'score 85 => grade B': %q", runOutput)
+	}
+}
+
+func TestRunCLIOperatorsExampleRegression(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "operators.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "operators.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build-iavm operators.ia failed: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("verify-iavm operators.ia sandbox failed: %s", stderr.String())
+	}
+
+	runOutput := captureProcessStdout(t, func() {
+		code = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if code != 0 {
+		t.Fatalf("run-iavm operators.ia sandbox failed: %s", stderr.String())
+	}
+	if !strings.Contains(runOutput, "6 * 7 = 42") {
+		t.Fatalf("operators.ia output missing '6 * 7 = 42': %q", runOutput)
+	}
+	if !strings.Contains(runOutput, "=== operator tests done ===") {
+		t.Fatalf("operators.ia output missing completion marker: %q", runOutput)
+	}
+}
