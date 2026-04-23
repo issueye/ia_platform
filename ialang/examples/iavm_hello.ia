@@ -1,0 +1,6 @@
+let value = 1 + 2;
+if (value == 3) {
+  print("iavm hello");
+} else {
+  print("unexpected");
+}

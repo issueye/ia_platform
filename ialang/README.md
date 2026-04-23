@@ -4,6 +4,44 @@
 
 **Language Completeness: 92+/100** ✅
 
+## 0.0.1 Platform Scope
+
+Current `0.0.1` work is converging on **IAVM as the primary platform path** rather than treating `ialang` only as a direct interpreter toolchain.
+
+### In scope for 0.0.1
+
+- Build a platform CLI from `ialang/cmd/ialang`
+- Support the IAVM command path:
+  - `build-iavm`
+  - `verify-iavm`
+  - `inspect-iavm`
+  - `run-iavm`
+- Keep one stable canonical example for release gating:
+  - `ialang/examples/iavm_hello.ia`
+- Ensure the following smoke path works end-to-end:
+  - `ialang source -> .iavm module -> verify -> inspect -> run`
+
+### Out of scope for 0.0.1
+
+- Full language semantic completeness across all examples
+- Full module/package publishing workflow
+- Complete async/await, class/inheritance, and closure compatibility guarantees in IAVM
+- Rich host ABI expansion beyond the current minimal platform path
+- JIT/AOT/native code generation
+
+### 0.0.1 canonical smoke commands
+
+```bash
+go build -o ./bin/ialang ./ialang/cmd/ialang
+./bin/ialang --help
+./bin/ialang build-iavm ./ialang/examples/iavm_hello.ia -o ./tmp/iavm_hello.iavm
+./bin/ialang verify-iavm ./tmp/iavm_hello.iavm --profile sandbox
+./bin/ialang inspect-iavm ./tmp/iavm_hello.iavm --verify --profile sandbox
+./bin/ialang run-iavm ./tmp/iavm_hello.iavm --profile sandbox
+```
+
+For the detailed milestone plan, see `../docs/plans/2026-04-23-iavm-0.0.1-platform-program-plan.md`.
+
 ## Documentation
 
 - Usage guide: [docs/usage-guide.md](docs/usage-guide.md)

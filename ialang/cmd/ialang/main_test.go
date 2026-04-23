@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	bc "iacommon/pkg/ialang/bytecode"
 	moduleapi "iacommon/pkg/ialang/module"
 	"iacommon/pkg/ialang/packagefile"
@@ -23,6 +24,9 @@ func TestParseCLIArgs(t *testing.T) {
 		args    []string
 		wantErr bool
 	}{
+		{name: "valid root help", args: []string{"ialang", "--help"}, wantErr: false},
+		{name: "valid root help short", args: []string{"ialang", "-h"}, wantErr: false},
+		{name: "valid root help command", args: []string{"ialang", "help"}, wantErr: false},
 		{name: "valid run", args: []string{"ialang", "run", "examples/hello.ia"}, wantErr: false},
 		{name: "valid build", args: []string{"ialang", "build", "examples/hello.ia"}, wantErr: false},
 		{name: "valid build with out flag", args: []string{"ialang", "build", "examples/hello.ia", "-o", "app.iapkg"}, wantErr: false},
@@ -176,6 +180,22 @@ func TestParseCLIArgsInspectIavmVerifyOptions(t *testing.T) {
 	}
 	if len(cmd.allowedCapabilities) != 1 || cmd.allowedCapabilities[0] != module.CapabilityFS {
 		t.Fatalf("allowedCapabilities = %#v, want [fs]", cmd.allowedCapabilities)
+	}
+}
+
+func TestRunCLIHelp(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI help code = %d, want 0", code)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "usage:") || !strings.Contains(out, "build-iavm") || !strings.Contains(out, "run-iavm") {
+		t.Fatalf("stdout = %q, want usage with IAVM commands", out)
 	}
 }
 
@@ -559,6 +579,82 @@ func TestRunCLIVerifyIavmFunctionLimitExceeded(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "verify module error: function count 2 exceeds limit 1") {
 		t.Fatalf("stderr = %q, want function limit error", stderr.String())
+	}
+}
+
+func captureProcessStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdout pipe error: %v", err)
+	}
+	os.Stdout = w
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stdout pipe writer error: %v", err)
+	}
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatalf("read stdout pipe error: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("close stdout pipe reader error: %v", err)
+	}
+	return buf.String()
+}
+
+func TestRunCLIIavmHelloExampleSmoke(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "iavm_hello.iavm")
+	examplePath := filepath.Join("..", "..", "examples", "iavm_hello.ia")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "build-iavm", examplePath, "-o", modulePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI build-iavm code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if _, err := os.Stat(modulePath); err != nil {
+		t.Fatalf("stat built module error: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "verify-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI verify-iavm code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "module verification passed") {
+		t.Fatalf("stdout = %q, want verification summary", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runCLI([]string{"ialang", "inspect-iavm", modulePath, "--verify", "--profile", "sandbox"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI inspect-iavm code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "verification: passed (mode=sandbox)") {
+		t.Fatalf("stdout = %q, want inspect verification summary", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	var runCode int
+	runOutput := captureProcessStdout(t, func() {
+		runCode = runCLI([]string{"ialang", "run-iavm", modulePath, "--profile", "sandbox"}, &stdout, &stderr)
+	})
+	if runCode != 0 {
+		t.Fatalf("runCLI run-iavm code = %d, want 0, stderr=%q", runCode, stderr.String())
+	}
+	if strings.TrimSpace(runOutput) != "iavm hello" {
+		t.Fatalf("stdout = %q, want iavm hello", runOutput)
 	}
 }
 

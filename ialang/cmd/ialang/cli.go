@@ -37,6 +37,11 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	if cmd.helpShown {
+		fmt.Fprintln(stdout, usageText)
+		return 0
+	}
+
 	switch cmd.name {
 	case "run":
 		if err := executeRunCommand(cmd.file, cmd.args, stderr); err != nil {
@@ -117,6 +122,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 func parseCLIArgs(args []string) (cliCommand, error) {
 	if len(args) < 2 {
 		return cliCommand{}, fmt.Errorf("missing command")
+	}
+	if args[1] == "--help" || args[1] == "-h" || args[1] == "help" {
+		return cliCommand{name: "help", helpShown: true}, nil
 	}
 	switch args[1] {
 	case "run":

@@ -16,3 +16,5 @@ ialang/compiler_coverage
 ialang/coverage
 ialang/frontend_cover
 tmp_*.out
+tmp/*
+bin/ialang
