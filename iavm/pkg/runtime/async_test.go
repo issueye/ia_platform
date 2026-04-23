@@ -704,7 +704,7 @@ func TestNextRetryBackoffPrefersRetryHintOverComputedBackoff(t *testing.T) {
 	}
 }
 
-func TestHostPollPendingPromisePreservesCapabilityRetryJitterProfile(t *testing.T) {
+func TestHostPollPendingPromisePreservesCapabilityRetryProfile(t *testing.T) {
 	host := newMockHost()
 	host.pollResult = api.PollResult{
 		Done:  false,
@@ -721,10 +721,11 @@ func TestHostPollPendingPromisePreservesCapabilityRetryJitterProfile(t *testing.
 			{
 				Kind: module.CapabilityNetwork,
 				Config: map[string]any{
-					"host_timeout_ms":  int64(5),
-					"retry_count":      int64(1),
-					"retry_backoff_ms": int64(1),
-					"retry_jitter":     float64(0.5),
+					"host_timeout_ms":      int64(5),
+					"retry_count":          int64(1),
+					"retry_backoff_ms":     int64(1),
+					"retry_max_elapsed_ms": int64(7),
+					"retry_jitter":         float64(0.5),
 				},
 			},
 		},
@@ -765,6 +766,9 @@ func TestHostPollPendingPromisePreservesCapabilityRetryJitterProfile(t *testing.
 	}
 	if state.RetryJitter != 0.5 {
 		t.Fatalf("retry jitter = %v, want 0.5", state.RetryJitter)
+	}
+	if state.RetryMaxElapsed != 7*time.Millisecond {
+		t.Fatalf("retry max elapsed = %v, want 7ms", state.RetryMaxElapsed)
 	}
 
 	host.pollDeadlineFailures = 1
@@ -844,6 +848,38 @@ func TestRunUntilSettledUsesCapabilityRetryBackoffProfile(t *testing.T) {
 	}
 	if len(host.pollLog) < 3 {
 		t.Fatalf("expected capability retry attempts, got %#v", host.pollLog)
+	}
+}
+
+func TestRetryCallLikeStopsWhenElapsedBudgetIsExhausted(t *testing.T) {
+	vm := &VM{}
+	attempts := 0
+
+	_, err := vm.retryCallLike(context.Background(), true, 3, 20*time.Millisecond, 0, 5*time.Millisecond, 2, 0, func() (api.CallResult, error) {
+		attempts++
+		return api.CallResult{}, api.MarkRetryable(errors.New("retry later"))
+	})
+	if err == nil || !api.IsRetryableError(err) {
+		t.Fatalf("expected retryable error once budget is exhausted, got %v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+}
+
+func TestRetryPollLikeStopsWhenElapsedBudgetIsExhausted(t *testing.T) {
+	vm := &VM{}
+	attempts := 0
+
+	_, err := vm.retryPollLike(context.Background(), 3, 20*time.Millisecond, 0, 5*time.Millisecond, 2, 0, func() (api.PollResult, error) {
+		attempts++
+		return api.PollResult{}, api.MarkRetryable(errors.New("retry later"))
+	})
+	if err == nil || !api.IsRetryableError(err) {
+		t.Fatalf("expected retryable error once budget is exhausted, got %v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
 	}
 }
 

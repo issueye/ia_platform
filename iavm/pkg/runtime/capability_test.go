@@ -1027,6 +1027,63 @@ func TestCapability_HostCallExcludesConfiguredHTTPMethodFromRetry(t *testing.T) 
 	}
 }
 
+func TestCapability_HostCallHonorsRetryMaxElapsedBudget(t *testing.T) {
+	host := newMockHost()
+	host.callRetryableFailures = 2
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"retry_count":          int64(2),
+					"retry_backoff_ms":     int64(20),
+					"retry_max_elapsed_ms": int64(5),
+					"retry_call_ops":       []any{"network.http_fetch"},
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"network", "url", "https://example.com", "network.http_fetch"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 3},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		RetryCount:   5,
+		RetryBackoff: time.Millisecond,
+		RetryCallOps: []string{"network.http_fetch"},
+	})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if err == nil || !api.IsRetryableError(err) {
+		t.Fatalf("Run error = %v, want retryable host.call failure", err)
+	}
+	if len(host.callLog) != 1 {
+		t.Fatalf("expected single call attempt once retry budget is exhausted, got %d", len(host.callLog))
+	}
+}
+
 func TestCapability_HostCallDoesNotRetryPlainErrorEvenIfAllowlisted(t *testing.T) {
 	host := newMockHost()
 	host.callErr = errors.New("permanent host.call failure")

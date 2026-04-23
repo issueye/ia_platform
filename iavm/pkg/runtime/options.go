@@ -14,6 +14,7 @@ type Options struct {
 	RetryCount      int
 	RetryBackoff    time.Duration
 	RetryMaxBackoff time.Duration
+	RetryMaxElapsed time.Duration
 	RetryMultiplier float64
 	RetryJitter     float64
 	RetryCallOps    []string
