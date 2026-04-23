@@ -278,20 +278,33 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 
 ### 3.14 `host.poll` / `OpHostPoll`
 
-`OpHostPoll` 当前已进入最小稳定范围：runtime 会从栈上弹出 handle ID，调用 `Host.Poll(handleID)`，并把结果压回为对象。
+`OpHostPoll` 当前已进入 async-ready 最小稳定范围：runtime 会从栈上弹出 handle ID，调用 `Host.Poll(handleID)`，并把结果封装为 Promise 值压栈。
 
-当前 `DefaultHost.Poll` 对已打开的文件句柄返回同步 ready 结果：
+语义约定如下：
+
+- 若 `PollResult.Done == true`，Promise 立即 resolve 为 poll 结果对象
+- 若 `PollResult.Done == false`，`await host.poll(handle)` 会让 VM 进入 suspension
+- `ResumeSuspension()` 会再次执行 `Host.Poll(handle)`；当结果变为 done 后继续解释执行
+- 当前 wakeup 模型是“resume 时重轮询”，尚未引入宿主主动推送通知
+
+当前 Promise resolve 后的 poll 结果对象包含以下字段：
 
 | Key | 类型 | 说明 |
 |---|---|---|
-| `done` | `bool` | 当前最小实现固定为 `true` |
-| `ready` | `bool` | 文件句柄已可读/可写 |
+| `done` | `bool` | poll 是否已完成 |
+| `ready` | `bool` | 资源当前可继续执行 |
 | `handle` | `uint64` | 被轮询的句柄 ID |
 | `error` | `string` | 错误文本；无错误时为空 |
 
+当前 `DefaultHost.Poll` 对已打开的文件、socket、listener 句柄都返回同步 ready 结果；因此 `host.poll` 已具备统一 ABI，但 backpressure 仍停留在最小语义层，不保证真实事件驱动或公平调度。
+
 ## 4. Network Capability
 
-Network capability kind 为 `network`。当前 `DefaultHost` 已稳定暴露 HTTP 请求，并已接入第一轮 handle-based socket ABI：`network.dial/listen/accept/send/recv/close`。
+Network capability kind 为 `network`。当前 `DefaultHost` 已稳定暴露 HTTP 请求，并已接入第一轮 handle-based socket ABI：`network.dial/listen/accept/send/recv/close`。其中：
+
+- client 路径已通过 `dial -> host.poll -> await -> send/recv -> close` 回归
+- server 路径已通过 `listen -> host.poll -> await -> accept -> recv/send -> close` 回归
+- 这些路径当前使用最小 poll/wakeup 语义，不提供独立事件循环或背压队列
 
 ### 4.1 `network.http_fetch`
 
