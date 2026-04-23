@@ -16,6 +16,7 @@ type Options struct {
 	RetryMaxBackoff time.Duration
 	RetryMultiplier float64
 	RetryJitter     float64
+	RetryCallOps    []string
 	WaitInterval    time.Duration
 	Host            api.Host
 	EnableTracing   bool

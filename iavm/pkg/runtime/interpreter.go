@@ -435,12 +435,15 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 
 		timeoutProfile := vm.capabilityTimeoutProfile(vm.lastCapabilityKind)
-		hostCtx, cancel := vm.hostOperationContext(vm.hostContext(), vm.options.HostTimeout)
+		callTimeout := vm.options.HostTimeout
 		if timeoutProfile.HostTimeout > 0 {
-			hostCtx, cancel = vm.hostOperationContext(vm.hostContext(), timeoutProfile.HostTimeout)
+			callTimeout = timeoutProfile.HostTimeout
 		}
-		result, err := vm.options.Host.Call(hostCtx, req)
-		cancel()
+		result, err := vm.retryCallLike(vm.hostContext(), timeoutProfile.allowsHostCallRetry(opName), timeoutProfile.RetryCount, timeoutProfile.RetryBackoff, timeoutProfile.RetryMaxBackoff, timeoutProfile.RetryMultiplier, timeoutProfile.RetryJitter, func() (api.CallResult, error) {
+			hostCtx, cancel := vm.hostOperationContext(vm.hostContext(), callTimeout)
+			defer cancel()
+			return vm.options.Host.Call(hostCtx, req)
+		})
 		if err != nil {
 			return fmt.Errorf("host.call failed: %w", err)
 		}

@@ -55,6 +55,7 @@ type capabilityTimeoutProfile struct {
 	RetryMaxBackoff time.Duration
 	RetryMultiplier float64
 	RetryJitter     float64
+	RetryCallOps    []string
 }
 
 func New(mod *module.Module, opts Options) (*VM, error) {
@@ -324,7 +325,7 @@ func (vm *VM) retryPollLike(ctx context.Context, retryCount int, retryBackoff ti
 			return result, nil
 		}
 		lastErr = err
-		if !vm.shouldRetryPollLike(ctx, err) || attempt == attempts-1 {
+		if !vm.shouldRetryHostOperation(ctx, err) || attempt == attempts-1 {
 			return api.PollResult{}, err
 		}
 		backoff := computeRetryBackoff(attempt, retryBackoff, retryMultiplier, retryMaxBackoff)
@@ -334,6 +335,33 @@ func (vm *VM) retryPollLike(ctx context.Context, retryCount int, retryBackoff ti
 		}
 	}
 	return api.PollResult{}, lastErr
+}
+
+func (vm *VM) retryCallLike(ctx context.Context, retryEnabled bool, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMultiplier float64, retryJitter float64, op func() (api.CallResult, error)) (api.CallResult, error) {
+	if !retryEnabled {
+		return op()
+	}
+	attempts := retryCount + 1
+	if attempts <= 0 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		result, err := op()
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if !vm.shouldRetryHostOperation(ctx, err) || attempt == attempts-1 {
+			return api.CallResult{}, err
+		}
+		backoff := computeRetryBackoff(attempt, retryBackoff, retryMultiplier, retryMaxBackoff)
+		backoff = vm.applyRetryJitter(backoff, retryJitter, retryMaxBackoff)
+		if err := vm.sleepBackoff(ctx, backoff); err != nil {
+			return api.CallResult{}, err
+		}
+	}
+	return api.CallResult{}, lastErr
 }
 
 func (vm *VM) applyRetryJitter(backoff time.Duration, ratio float64, max time.Duration) time.Duration {
@@ -375,7 +403,7 @@ func computeRetryBackoff(attempt int, base time.Duration, multiplier float64, ma
 	return result
 }
 
-func (vm *VM) shouldRetryPollLike(ctx context.Context, err error) bool {
+func (vm *VM) shouldRetryHostOperation(ctx context.Context, err error) bool {
 	if err == nil {
 		return false
 	}
@@ -465,6 +493,7 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 		RetryMaxBackoff: vm.options.RetryMaxBackoff,
 		RetryMultiplier: vm.options.RetryMultiplier,
 		RetryJitter:     vm.options.RetryJitter,
+		RetryCallOps:    append([]string(nil), vm.options.RetryCallOps...),
 	}
 	config := vm.capabilityConfig(kind)
 	if len(config) == 0 {
@@ -491,7 +520,19 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	if jitter, ok := readFloat(config, "retry_jitter", "retryJitter"); ok {
 		profile.RetryJitter = jitter
 	}
+	if callOps, ok := readStringSlice(config, "retry_call_ops", "retryCallOps"); ok {
+		profile.RetryCallOps = callOps
+	}
 	return profile
+}
+
+func (profile capabilityTimeoutProfile) allowsHostCallRetry(opName string) bool {
+	for _, candidate := range profile.RetryCallOps {
+		if candidate == opName {
+			return true
+		}
+	}
+	return false
 }
 
 func readInt(values map[string]any, keys ...string) (int, bool) {
@@ -542,6 +583,39 @@ func readFloat(values map[string]any, keys ...string) (float64, bool) {
 		}
 	}
 	return 0, false
+}
+
+func readStringSlice(values map[string]any, keys ...string) ([]string, bool) {
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok || value == nil {
+			continue
+		}
+		switch typed := value.(type) {
+		case []string:
+			return append([]string(nil), typed...), true
+		case []any:
+			result := make([]string, 0, len(typed))
+			valid := true
+			for _, item := range typed {
+				text, ok := item.(string)
+				if !ok {
+					valid = false
+					break
+				}
+				result = append(result, text)
+			}
+			if valid {
+				return result, true
+			}
+		case string:
+			if typed == "" {
+				return []string{}, true
+			}
+			return []string{typed}, true
+		}
+	}
+	return nil, false
 }
 
 func readDurationMS(values map[string]any, keys ...string) (time.Duration, bool) {

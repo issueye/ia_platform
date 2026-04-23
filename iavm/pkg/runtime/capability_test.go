@@ -17,6 +17,7 @@ type mockHost struct {
 	callLog              []api.CallRequest
 	callResult           api.CallResult
 	callErr              error
+	callDeadlineFailures int
 	pollLog              []uint64
 	pollResult           api.PollResult
 	pollErr              error
@@ -62,11 +63,16 @@ func (h *mockHost) ReleaseCapability(ctx context.Context, capID string) error {
 }
 
 func (h *mockHost) Call(ctx context.Context, req api.CallRequest) (api.CallResult, error) {
+	h.callLog = append(h.callLog, req)
+	if h.callDeadlineFailures > 0 {
+		h.callDeadlineFailures--
+		<-ctx.Done()
+		return api.CallResult{}, ctx.Err()
+	}
 	if h.blockCall {
 		<-ctx.Done()
 		return api.CallResult{}, ctx.Err()
 	}
-	h.callLog = append(h.callLog, req)
 	return h.callResult, h.callErr
 }
 
@@ -217,6 +223,9 @@ func TestCapability_HostCallHonorsHostTimeout(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Run error = %v, want deadline exceeded", err)
 	}
+	if len(host.callLog) != 1 {
+		t.Fatalf("expected 1 host call attempt, got %d", len(host.callLog))
+	}
 }
 
 func TestCapability_HostCallUsesCapabilityTimeoutProfile(t *testing.T) {
@@ -262,6 +271,162 @@ func TestCapability_HostCallUsesCapabilityTimeoutProfile(t *testing.T) {
 	err = vm.Run()
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Run error = %v, want deadline exceeded", err)
+	}
+	if len(host.callLog) != 1 {
+		t.Fatalf("expected 1 host call attempt, got %d", len(host.callLog))
+	}
+}
+
+func TestCapability_HostCallRetriesConfiguredSafeOperation(t *testing.T) {
+	host := newMockHost()
+	host.callDeadlineFailures = 1
+	host.callResult = api.CallResult{Value: map[string]any{"ok": true}}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs", "fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		HostTimeout:  5 * time.Millisecond,
+		RetryCount:   1,
+		RetryBackoff: time.Millisecond,
+		RetryCallOps: []string{"fs.read_file"},
+	})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if len(host.callLog) != 2 {
+		t.Fatalf("expected 2 host call attempts, got %d", len(host.callLog))
+	}
+
+	result, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected host call result on stack")
+	}
+	if result.Kind != core.ValueObjectRef {
+		t.Fatalf("expected object result, got %v", result.Kind)
+	}
+}
+
+func TestCapability_HostCallDoesNotRetryUnlistedOperation(t *testing.T) {
+	host := newMockHost()
+	host.callDeadlineFailures = 1
+	host.callResult = api.CallResult{Value: map[string]any{"ok": true}}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityFS},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs", "fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		HostTimeout:  5 * time.Millisecond,
+		RetryCount:   1,
+		RetryBackoff: time.Millisecond,
+		RetryCallOps: []string{"fs.stat"},
+	})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run error = %v, want deadline exceeded", err)
+	}
+	if len(host.callLog) != 1 {
+		t.Fatalf("expected 1 host call attempt, got %d", len(host.callLog))
+	}
+}
+
+func TestCapability_HostCallUsesCapabilityRetryAllowlist(t *testing.T) {
+	host := newMockHost()
+	host.callDeadlineFailures = 1
+	host.callResult = api.CallResult{Value: map[string]any{"ok": true}}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityFS,
+				Config: map[string]any{
+					"host_timeout_ms":  int64(5),
+					"retry_count":      int64(1),
+					"retry_backoff_ms": int64(1),
+					"retry_call_ops":   []any{"fs.read_file"},
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs", "fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:        host,
+		HostTimeout: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if len(host.callLog) != 2 {
+		t.Fatalf("expected 2 host call attempts, got %d", len(host.callLog))
 	}
 }
 
