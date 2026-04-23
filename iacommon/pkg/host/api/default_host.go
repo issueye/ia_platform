@@ -509,10 +509,6 @@ func markTransientNetworkError(err error) error {
 }
 
 func shouldRetryHTTPStatus(meta map[string]any, status int, method string) bool {
-	statuses, ok := readIntList(meta, "retry_http_statuses", "retryHTTPStatuses")
-	if !ok {
-		return false
-	}
 	if methods, ok := readStringSliceAny(meta, "retry_http_methods", "retryHTTPMethods"); ok {
 		normalizedMethod := normalizeHTTPMethod(method)
 		matched := false
@@ -526,10 +522,21 @@ func shouldRetryHTTPStatus(meta map[string]any, status int, method string) bool 
 			return false
 		}
 	}
+	statuses, hasStatuses := readIntList(meta, "retry_http_statuses", "retryHTTPStatuses")
 	for _, candidate := range statuses {
 		if candidate == status {
 			return true
 		}
+	}
+	classes, hasClasses := readIntList(meta, "retry_http_status_classes", "retryHTTPStatusClasses")
+	statusClass := status / 100
+	for _, candidate := range classes {
+		if candidate == statusClass {
+			return true
+		}
+	}
+	if !hasStatuses && !hasClasses {
+		return false
 	}
 	return false
 }

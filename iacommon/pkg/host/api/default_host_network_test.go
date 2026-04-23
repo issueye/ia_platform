@@ -646,3 +646,70 @@ func TestDefaultHostFiltersRetryableHTTPStatusByMethod(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultHostMarksConfiguredHTTPStatusClassRetryable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("retry later"))
+	}))
+	defer server.Close()
+
+	host := &DefaultHost{Network: &hostnet.HTTPProvider{Policy: hostnet.Policy{AllowSchemes: []string{"http", "https"}}}}
+	capability, err := host.AcquireCapability(context.Background(), AcquireRequest{
+		Kind: CapabilityNetwork,
+		Config: map[string]any{
+			"retry_http_status_classes": []any{5},
+			"retry_http_methods":        []any{http.MethodGet},
+		},
+	})
+	if err != nil {
+		t.Fatalf("acquire network capability: %v", err)
+	}
+
+	_, err = host.Call(context.Background(), CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "network.http_fetch",
+		Args: map[string]any{
+			"url": server.URL,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected retryable http status class error")
+	}
+	if !IsRetryableError(err) {
+		t.Fatalf("expected retryable class error, got %v", err)
+	}
+}
+
+func TestDefaultHostDoesNotRetryUnmatchedHTTPStatusClass(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("not found"))
+	}))
+	defer server.Close()
+
+	host := &DefaultHost{Network: &hostnet.HTTPProvider{Policy: hostnet.Policy{AllowSchemes: []string{"http", "https"}}}}
+	capability, err := host.AcquireCapability(context.Background(), AcquireRequest{
+		Kind: CapabilityNetwork,
+		Config: map[string]any{
+			"retry_http_status_classes": []any{5},
+		},
+	})
+	if err != nil {
+		t.Fatalf("acquire network capability: %v", err)
+	}
+
+	result, err := host.Call(context.Background(), CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "network.http_fetch",
+		Args: map[string]any{
+			"url": server.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected raw response, got %v", err)
+	}
+	if status, ok := result.Value["status"].(int); !ok || status != http.StatusNotFound {
+		t.Fatalf("unexpected status result: %#v", result.Value["status"])
+	}
+}
