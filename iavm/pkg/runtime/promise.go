@@ -3,6 +3,7 @@ package runtime
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"iavm/pkg/core"
 )
@@ -22,6 +23,8 @@ type promiseState struct {
 	Result       core.Value
 	Error        string
 	PollHandleID uint64
+	HostTimeout  time.Duration
+	WaitTimeout  time.Duration
 }
 
 func pendingPromiseValue() core.Value {
@@ -53,7 +56,7 @@ func rejectedPromiseValue(message string) core.Value {
 	}
 }
 
-func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, errText string) core.Value {
+func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, errText string, hostTimeout time.Duration, waitTimeout time.Duration) core.Value {
 	switch {
 	case !done:
 		return core.Value{
@@ -61,6 +64,8 @@ func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, err
 			Raw: &promiseState{
 				Status:       promiseStatusPending,
 				PollHandleID: handleID,
+				HostTimeout:  hostTimeout,
+				WaitTimeout:  waitTimeout,
 			},
 		}
 	case errText != "":

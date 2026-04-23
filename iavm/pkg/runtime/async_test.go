@@ -429,6 +429,57 @@ func TestRunUntilSettledHonorsHostTimeoutDuringPoll(t *testing.T) {
 	}
 }
 
+func TestRunUntilSettledUsesCapabilityWaitTimeoutProfile(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.blockWait = true
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"network", int64(31)},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"wait_timeout_ms": int64(5),
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:        host,
+		WaitTimeout: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	err = vm.RunUntilSettled(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunUntilSettled error = %v, want deadline exceeded", err)
+	}
+}
+
 func moduleForAsyncTest(constants []any, code []core.Instruction) *module.Module {
 	return &module.Module{
 		Magic:     "IAVM",

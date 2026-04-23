@@ -207,6 +207,52 @@ func TestCapability_HostCallHonorsHostTimeout(t *testing.T) {
 	}
 }
 
+func TestCapability_HostCallUsesCapabilityTimeoutProfile(t *testing.T) {
+	host := newMockHost()
+	host.blockCall = true
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityFS,
+				Config: map[string]any{
+					"host_timeout_ms": int64(5),
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs", "fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{
+		Host:        host,
+		HostTimeout: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+
+	err = vm.Run()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run error = %v, want deadline exceeded", err)
+	}
+}
+
 func TestCapability_HostCallPassesObjectArgs(t *testing.T) {
 	host := newMockHost()
 	host.callResult = api.CallResult{Value: map[string]any{"ok": true}}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
+	"strconv"
 	"time"
 
 	"iacommon/pkg/host/api"
@@ -19,28 +20,34 @@ type CompiledFunction struct {
 type BuiltinFunc func(args []core.Value) core.Value
 
 type VM struct {
-	mod              *module.Module
-	options          Options
-	runCtx           context.Context
-	runCancel        context.CancelFunc
-	stack            *Stack
-	globals          []core.Value
-	functions        []CompiledFunction
-	handles          *HandleTable
-	frames           []*Frame
-	capabilityIDs    map[uint32]string
-	lastCapabilityID string
-	exception        core.Value // current uncaught exception value
-	suspension       *Suspension
-	startedAt        int64
-	stepCount        int64
-	builtins         map[string]BuiltinFunc
+	mod                *module.Module
+	options            Options
+	runCtx             context.Context
+	runCancel          context.CancelFunc
+	stack              *Stack
+	globals            []core.Value
+	functions          []CompiledFunction
+	handles            *HandleTable
+	frames             []*Frame
+	capabilityIDs      map[uint32]string
+	lastCapabilityID   string
+	lastCapabilityKind module.CapabilityKind
+	exception          core.Value // current uncaught exception value
+	suspension         *Suspension
+	startedAt          int64
+	stepCount          int64
+	builtins           map[string]BuiltinFunc
 }
 
 type Suspension struct {
 	Reason     string
 	AwaitValue core.Value
 	FrameDepth int
+}
+
+type capabilityTimeoutProfile struct {
+	HostTimeout time.Duration
+	WaitTimeout time.Duration
 }
 
 func New(mod *module.Module, opts Options) (*VM, error) {
@@ -190,6 +197,9 @@ func (vm *VM) WaitSuspension(ctx context.Context) error {
 	waiter, ok := vm.options.Host.(api.Waiter)
 	if ok {
 		waitCtx, cancel := vm.hostOperationContext(ctx, vm.options.WaitTimeout)
+		if state.WaitTimeout > 0 {
+			waitCtx, cancel = vm.hostOperationContext(ctx, state.WaitTimeout)
+		}
 		result, err := waiter.Wait(waitCtx, state.PollHandleID)
 		cancel()
 		if err != nil {
@@ -239,7 +249,11 @@ func (vm *VM) waitSuspensionByPolling(ctx context.Context, state *promiseState) 
 		interval = 10 * time.Millisecond
 	}
 	for {
-		pollCtx, cancel := vm.hostOperationContext(ctx, vm.options.HostTimeout)
+		pollTimeout := vm.options.HostTimeout
+		if state.HostTimeout > 0 {
+			pollTimeout = state.HostTimeout
+		}
+		pollCtx, cancel := vm.hostOperationContext(ctx, pollTimeout)
 		result, err := vm.options.Host.Poll(pollCtx, state.PollHandleID)
 		cancel()
 		if err != nil {
@@ -342,17 +356,61 @@ func (vm *VM) capabilityConfig(kind module.CapabilityKind) map[string]any {
 	return nil
 }
 
+func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTimeoutProfile {
+	profile := capabilityTimeoutProfile{
+		HostTimeout: vm.options.HostTimeout,
+		WaitTimeout: vm.options.WaitTimeout,
+	}
+	config := vm.capabilityConfig(kind)
+	if len(config) == 0 {
+		return profile
+	}
+	if timeout, ok := readDurationMS(config, "host_timeout_ms", "hostTimeoutMS"); ok {
+		profile.HostTimeout = timeout
+	}
+	if timeout, ok := readDurationMS(config, "wait_timeout_ms", "waitTimeoutMS"); ok {
+		profile.WaitTimeout = timeout
+	}
+	return profile
+}
+
+func readDurationMS(values map[string]any, keys ...string) (time.Duration, bool) {
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok || value == nil {
+			continue
+		}
+		switch typed := value.(type) {
+		case int:
+			return time.Duration(typed) * time.Millisecond, true
+		case int64:
+			return time.Duration(typed) * time.Millisecond, true
+		case uint64:
+			return time.Duration(typed) * time.Millisecond, true
+		case float64:
+			return time.Duration(typed * float64(time.Millisecond)), true
+		case string:
+			parsed, err := strconv.ParseInt(typed, 10, 64)
+			if err == nil {
+				return time.Duration(parsed) * time.Millisecond, true
+			}
+		}
+	}
+	return 0, false
+}
+
 func (vm *VM) runFunctionSync(fnIdx uint32, args []core.Value, fnRef core.Value) (core.Value, error) {
 	child := &VM{
-		mod:              vm.mod,
-		options:          vm.options,
-		stack:            NewStack(256),
-		globals:          vm.globals,
-		functions:        vm.functions,
-		handles:          vm.handles,
-		capabilityIDs:    vm.capabilityIDs,
-		lastCapabilityID: vm.lastCapabilityID,
-		builtins:         vm.builtins,
+		mod:                vm.mod,
+		options:            vm.options,
+		stack:              NewStack(256),
+		globals:            vm.globals,
+		functions:          vm.functions,
+		handles:            vm.handles,
+		capabilityIDs:      vm.capabilityIDs,
+		lastCapabilityID:   vm.lastCapabilityID,
+		lastCapabilityKind: vm.lastCapabilityKind,
+		builtins:           vm.builtins,
 	}
 	if err := child.pushCallFrame(fnIdx, args, fnRef); err != nil {
 		return core.Value{}, err
@@ -362,6 +420,7 @@ func (vm *VM) runFunctionSync(fnIdx uint32, args []core.Value, fnRef core.Value)
 	}
 	vm.capabilityIDs = child.capabilityIDs
 	vm.lastCapabilityID = child.lastCapabilityID
+	vm.lastCapabilityKind = child.lastCapabilityKind
 	if child.stack.Size() == 0 {
 		return core.Value{Kind: core.ValueNull}, nil
 	}

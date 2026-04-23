@@ -390,7 +390,11 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			return fmt.Errorf("capability import kind must reference a string constant")
 		}
 		config := vm.capabilityConfig(module.CapabilityKind(capKind))
+		timeoutProfile := vm.capabilityTimeoutProfile(module.CapabilityKind(capKind))
 		hostCtx, cancel := vm.hostOperationContext(vm.hostContext(), vm.options.HostTimeout)
+		if timeoutProfile.HostTimeout > 0 {
+			hostCtx, cancel = vm.hostOperationContext(vm.hostContext(), timeoutProfile.HostTimeout)
+		}
 		cap, err := vm.options.Host.AcquireCapability(hostCtx, api.AcquireRequest{
 			Kind:   api.CapabilityKind(capKind),
 			Config: config,
@@ -405,6 +409,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		}
 		vm.capabilityIDs[inst.A] = cap.ID
 		vm.lastCapabilityID = cap.ID
+		vm.lastCapabilityKind = module.CapabilityKind(capKind)
 		vm.stack.Push(core.Value{Kind: core.ValueHostHandle, Raw: cap.ID})
 
 	case core.OpHostCall:
@@ -429,7 +434,11 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 			Args:         callArgs,
 		}
 
+		timeoutProfile := vm.capabilityTimeoutProfile(vm.lastCapabilityKind)
 		hostCtx, cancel := vm.hostOperationContext(vm.hostContext(), vm.options.HostTimeout)
+		if timeoutProfile.HostTimeout > 0 {
+			hostCtx, cancel = vm.hostOperationContext(vm.hostContext(), timeoutProfile.HostTimeout)
+		}
 		result, err := vm.options.Host.Call(hostCtx, req)
 		cancel()
 		if err != nil {
@@ -451,13 +460,17 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if err != nil {
 			return err
 		}
+		timeoutProfile := vm.capabilityTimeoutProfile(vm.lastCapabilityKind)
 		hostCtx, cancel := vm.hostOperationContext(vm.hostContext(), vm.options.HostTimeout)
+		if timeoutProfile.HostTimeout > 0 {
+			hostCtx, cancel = vm.hostOperationContext(vm.hostContext(), timeoutProfile.HostTimeout)
+		}
 		result, err := vm.options.Host.Poll(hostCtx, handleID)
 		cancel()
 		if err != nil {
 			return fmt.Errorf("host.poll failed: %w", err)
 		}
-		vm.stack.Push(promiseValueFromHostPoll(handleID, coreValueFromHostPoll(result), result.Done, result.Error))
+		vm.stack.Push(promiseValueFromHostPoll(handleID, coreValueFromHostPoll(result), result.Done, result.Error, timeoutProfile.HostTimeout, timeoutProfile.WaitTimeout))
 
 	case core.OpDup:
 		val := vm.stack.Peek(0)
