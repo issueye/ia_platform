@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	compiler "ialang/pkg/lang/compiler"
@@ -85,6 +87,58 @@ func TestAsyncFunctionExampleFileRuntime(t *testing.T) {
 	}
 	if got.Kind != core.ValueI64 && got.Kind != core.ValueF64 {
 		t.Fatalf("unexpected async_loop result: %#v", got)
+	}
+}
+
+func TestAwaitPendingPromiseSuspendsRuntime(t *testing.T) {
+	mod := moduleForAsyncTest(nil, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpAwait},
+		{Op: core.OpReturn},
+	})
+	mod.Constants = []any{pendingPromiseValue()}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	err = vm.Run()
+	if !errors.Is(err, ErrPromisePending) {
+		t.Fatalf("Run error = %v, want ErrPromisePending", err)
+	}
+	suspension := vm.SuspensionState()
+	if suspension == nil {
+		t.Fatal("expected suspension state")
+	}
+	if suspension.Reason != "await_pending_promise" {
+		t.Fatalf("suspension reason = %q", suspension.Reason)
+	}
+	if suspension.AwaitValue.Kind != core.ValuePromise {
+		t.Fatalf("await value kind = %v, want promise", suspension.AwaitValue.Kind)
+	}
+}
+
+func TestAwaitRejectedPromiseReturnsError(t *testing.T) {
+	mod := moduleForAsyncTest(nil, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpAwait},
+		{Op: core.OpReturn},
+	})
+	mod.Constants = []any{rejectedPromiseValue("boom")}
+
+	vm, err := New(mod, Options{})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	err = vm.Run()
+	if err == nil {
+		t.Fatal("expected rejected promise error")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("error = %v, want rejection message", err)
+	}
+	if vm.SuspensionState() != nil {
+		t.Fatal("rejected promise should not leave suspension state")
 	}
 }
 

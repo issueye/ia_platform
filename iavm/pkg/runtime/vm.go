@@ -24,9 +24,16 @@ type VM struct {
 	capabilityIDs    map[uint32]string
 	lastCapabilityID string
 	exception        core.Value // current uncaught exception value
+	suspension       *Suspension
 	startedAt        int64
 	stepCount        int64
 	builtins         map[string]BuiltinFunc
+}
+
+type Suspension struct {
+	Reason     string
+	AwaitValue core.Value
+	FrameDepth int
 }
 
 func New(mod *module.Module, opts Options) (*VM, error) {
@@ -69,6 +76,7 @@ func (vm *VM) GetBuiltin(name string) (BuiltinFunc, bool) {
 }
 
 func (vm *VM) Run() error {
+	vm.suspension = nil
 	// Find entry function
 	var entryIdx *uint32
 	for i, fn := range vm.mod.Functions {
@@ -116,6 +124,10 @@ func (vm *VM) PopResult() (core.Value, bool) {
 
 func (vm *VM) StackSize() int {
 	return vm.stack.Size()
+}
+
+func (vm *VM) SuspensionState() *Suspension {
+	return vm.suspension
 }
 
 func (vm *VM) resolveStringConstant(fn *module.Function, index uint32) (string, bool) {

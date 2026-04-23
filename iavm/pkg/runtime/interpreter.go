@@ -616,6 +616,13 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		val := vm.stack.Pop()
 		resolved, err := awaitValue(val)
 		if err != nil {
+			if err == ErrPromisePending {
+				vm.suspension = &Suspension{
+					Reason:     "await_pending_promise",
+					AwaitValue: val,
+					FrameDepth: len(vm.frames),
+				}
+			}
 			return err
 		}
 		vm.stack.Push(resolved)
@@ -1385,8 +1392,15 @@ func valueToString(a core.Value) string {
 		return a.Raw.(string)
 	case core.ValuePromise:
 		state, ok := a.Raw.(*promiseState)
-		if ok && state != nil && state.Done {
-			return "[Promise resolved]"
+		if ok && state != nil {
+			switch state.Status {
+			case promiseStatusResolved:
+				return "[Promise resolved]"
+			case promiseStatusRejected:
+				return "[Promise rejected]"
+			default:
+				return "[Promise pending]"
+			}
 		}
 		return "[Promise pending]"
 	default:
