@@ -499,10 +499,13 @@ runtime 可以先将这些错误包装成运行时错误；后续若接入 ialan
 补充约定：
 
 - 宿主若希望某个错误被 runtime 视为“可安全重试”，可通过 `api.MarkRetryable(err)` 包装后返回
+- 宿主若还需要向 runtime 提供“建议等待多久再重试”，可通过 `api.MarkRetryableAfter(err, backoff)` 追加 backoff hint
 - runtime 可通过 `api.IsRetryableError(err)` 识别该标记，并把它与 timeout retry 规则统一处理
+- runtime 可通过 `api.RetryBackoffHint(err)` 读取该 backoff hint；命中时会优先采用宿主提示，而不是默认 backoff/jitter
 - `MarkRetryable` 只表达“该错误类别允许重试”，不自动绕过 `host.call` 的 allowlist 约束
 - `DefaultHost` 当前会对网络 I/O 路径上的瞬时 `net.Error`（如 timeout / temporary）自动应用该标记；参数校验、policy 拒绝、capability 不存在等错误仍保持非 retryable
 - 对 `network.http_fetch`，`DefaultHost` 还支持 capability 级 `retry_http_statuses` / `retryHTTPStatuses` 配置；只有命中该显式状态码列表时，HTTP 响应才会被映射为 retryable error，未配置时仍按普通响应返回
+- 当 `network.http_fetch` 命中的 HTTP 响应同时带有 `Retry-After` 头时，`DefaultHost` 会把它解析为 backoff hint 一并传给 runtime
 
 ## 5.1 IAVM `OpHostCall` 参数约定
 
