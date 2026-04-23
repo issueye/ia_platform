@@ -836,6 +836,133 @@ func TestRunCLIRunIavmCapConfigEnablesNetworkDial(t *testing.T) {
 	}
 }
 
+func TestRunCLIRunIavmCapConfigEnablesNetworkSendRecv(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen error: %v", err)
+	}
+	defer listener.Close()
+
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		buf := make([]byte, 4)
+		if _, err := io.ReadFull(conn, buf); err != nil {
+			return
+		}
+		if string(buf) != "ping" {
+			return
+		}
+		_, _ = conn.Write([]byte("pong"))
+	}()
+
+	addr := listener.Addr().(*net.TCPAddr)
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "network-send-recv.iavm")
+	configPath := filepath.Join(dir, "caps.toml")
+	configText := "[network]\nrights = [\"socket\"]\nallow_hosts = [\"127.0.0.1\"]\nallow_ports = [" + strconv.Itoa(addr.Port) + "]\n"
+	if err := os.WriteFile(configPath, []byte(configText), 0o644); err != nil {
+		t.Fatalf("write cap config error: %v", err)
+	}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityNetwork},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Locals:    []core.ValueKind{core.ValueObjectRef},
+				Constants: []any{
+					"network",
+					"network", "tcp",
+					"host", "127.0.0.1",
+					"port", int64(addr.Port),
+					"network.dial",
+					"handle",
+					"network.send",
+					"data", "ping",
+					"network.recv",
+					"size", int64(4),
+					"network.close",
+					"ready",
+				},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpConst, A: 3},
+					{Op: core.OpConst, A: 4},
+					{Op: core.OpConst, A: 5},
+					{Op: core.OpConst, A: 6},
+					{Op: core.OpMakeObject, A: 3},
+					{Op: core.OpConst, A: 7},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpStoreLocal, A: 0},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 16},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 8},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpConst, A: 10},
+					{Op: core.OpConst, A: 11},
+					{Op: core.OpMakeObject, A: 2},
+					{Op: core.OpConst, A: 9},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 8},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpConst, A: 13},
+					{Op: core.OpConst, A: 14},
+					{Op: core.OpMakeObject, A: 2},
+					{Op: core.OpConst, A: 12},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 8},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 15},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "run-iavm", modulePath, "--cap-config", configPath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI run-iavm network send/recv code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestRunCLIVerifyIavmFunctionLimitExceeded(t *testing.T) {
 	dir := t.TempDir()
 	modulePath := filepath.Join(dir, "too-many-functions.iavm")

@@ -2,12 +2,15 @@ package integration
 
 import (
 	"context"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"iacommon/pkg/host/api"
 	hostfs "iacommon/pkg/host/fs"
+	hostnet "iacommon/pkg/host/network"
 	"iacommon/pkg/ialang/bytecode"
 	compiler "ialang/pkg/lang/compiler"
 	frontend "ialang/pkg/lang/frontend"
@@ -453,6 +456,158 @@ func TestFullPipeline_FSHandleReadAndPoll(t *testing.T) {
 	}
 	if val.Kind != core.ValueBytes || string(val.Raw.([]byte)) != "hello" {
 		t.Fatalf("unexpected read result: %#v", val)
+	}
+}
+
+func TestFullPipeline_NetworkHandleDialSendRecv(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	defer listener.Close()
+
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		buf := make([]byte, 4)
+		if _, err := io.ReadFull(conn, buf); err != nil {
+			return
+		}
+		if string(buf) != "ping" {
+			return
+		}
+		_, _ = conn.Write([]byte("pong"))
+	}()
+
+	addr := listener.Addr().(*net.TCPAddr)
+	host := &api.DefaultHost{
+		Network: &hostnet.CompositeProvider{
+			HTTP: &hostnet.HTTPProvider{Policy: hostnet.Policy{
+				AllowSchemes: []string{"http", "https"},
+			}},
+			Socket: &hostnet.SocketProvider{Policy: hostnet.Policy{
+				AllowHosts: []string{"127.0.0.1"},
+				AllowPorts: []int{addr.Port},
+			}},
+		},
+	}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Constants: []any{
+			"network",
+			"network", "tcp",
+			"host", "127.0.0.1",
+			"port", int64(addr.Port),
+			"network.dial",
+			"handle",
+			"network.send",
+			"data", "ping",
+			"network.recv",
+			"size", int64(4),
+			"network.close",
+			"ready",
+		},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityNetwork},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Locals: []core.ValueKind{
+					core.ValueObjectRef,
+					core.ValueObjectRef,
+				},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpConst, A: 3},
+					{Op: core.OpConst, A: 4},
+					{Op: core.OpConst, A: 5},
+					{Op: core.OpConst, A: 6},
+					{Op: core.OpMakeObject, A: 3},
+					{Op: core.OpConst, A: 7},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpStoreLocal, A: 0},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 16},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 8},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpConst, A: 10},
+					{Op: core.OpConst, A: 11},
+					{Op: core.OpMakeObject, A: 2},
+					{Op: core.OpConst, A: 9},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 8},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpConst, A: 13},
+					{Op: core.OpConst, A: 14},
+					{Op: core.OpMakeObject, A: 2},
+					{Op: core.OpConst, A: 12},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpStoreLocal, A: 1},
+					{Op: core.OpConst, A: 8},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 15},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpLoadLocal, A: 1},
+					{Op: core.OpGetProp, A: 10},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	result, err := binary.VerifyModule(mod, binary.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("VerifyModule failed: %v", err)
+	}
+	if !result.Valid {
+		t.Fatal("module not valid")
+	}
+
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule failed: %v", err)
+	}
+	decoded, err := binary.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("DecodeModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(decoded, runtime.Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("VM.Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueBytes || string(val.Raw.([]byte)) != "pong" {
+		t.Fatalf("unexpected recv result: %#v", val)
 	}
 }
 
