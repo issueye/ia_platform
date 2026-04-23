@@ -285,7 +285,8 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - 若 `PollResult.Done == true`，Promise 立即 resolve 为 poll 结果对象
 - 若 `PollResult.Done == false`，`await host.poll(handle)` 会让 VM 进入 suspension
 - `ResumeSuspension()` 会再次执行 `Host.Poll(handle)`；当结果变为 done 后继续解释执行
-- 当前 wakeup 模型是“resume 时重轮询”，尚未引入宿主主动推送通知
+- `WaitSuspension(ctx)` 会优先调用宿主可选 `Wait(handle)` 能力，wait 完成后再恢复执行
+- 当前 wakeup 模型仍是最小实现：宿主只需保证 wait 最终返回 done 或 context 结束，不要求主动事件推送协议
 
 当前 Promise resolve 后的 poll 结果对象包含以下字段：
 
@@ -297,6 +298,12 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 | `error` | `string` | 错误文本；无错误时为空 |
 
 当前 `DefaultHost.Poll` 对已打开的文件、socket、listener 句柄都返回同步 ready 结果；因此 `host.poll` 已具备统一 ABI，但 backpressure 仍停留在最小语义层，不保证真实事件驱动或公平调度。
+
+补充约定：
+
+- `Host.Poll(handle)` 负责“查询当前状态”
+- `Host.Wait(handle)` 若实现，则负责“阻塞直到值得再次恢复”
+- CLI `run-iavm` 当前已在遇到 pending suspension 时自动调用 wait/resume 闭环
 
 ## 4. Network Capability
 
