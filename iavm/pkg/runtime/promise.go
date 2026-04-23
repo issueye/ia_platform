@@ -19,14 +19,16 @@ const (
 )
 
 type promiseState struct {
-	Status       promiseStatus
-	Result       core.Value
-	Error        string
-	PollHandleID uint64
-	HostTimeout  time.Duration
-	WaitTimeout  time.Duration
-	RetryCount   int
-	RetryBackoff time.Duration
+	Status          promiseStatus
+	Result          core.Value
+	Error           string
+	PollHandleID    uint64
+	HostTimeout     time.Duration
+	WaitTimeout     time.Duration
+	RetryCount      int
+	RetryBackoff    time.Duration
+	RetryMaxBackoff time.Duration
+	RetryMultiplier float64
 }
 
 func pendingPromiseValue() core.Value {
@@ -58,18 +60,20 @@ func rejectedPromiseValue(message string) core.Value {
 	}
 }
 
-func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, errText string, hostTimeout time.Duration, waitTimeout time.Duration, retryCount int, retryBackoff time.Duration) core.Value {
+func promiseValueFromHostPoll(handleID uint64, result core.Value, done bool, errText string, hostTimeout time.Duration, waitTimeout time.Duration, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMultiplier float64) core.Value {
 	switch {
 	case !done:
 		return core.Value{
 			Kind: core.ValuePromise,
 			Raw: &promiseState{
-				Status:       promiseStatusPending,
-				PollHandleID: handleID,
-				HostTimeout:  hostTimeout,
-				WaitTimeout:  waitTimeout,
-				RetryCount:   retryCount,
-				RetryBackoff: retryBackoff,
+				Status:          promiseStatusPending,
+				PollHandleID:    handleID,
+				HostTimeout:     hostTimeout,
+				WaitTimeout:     waitTimeout,
+				RetryCount:      retryCount,
+				RetryBackoff:    retryBackoff,
+				RetryMaxBackoff: retryMaxBackoff,
+				RetryMultiplier: retryMultiplier,
 			},
 		}
 	case errText != "":

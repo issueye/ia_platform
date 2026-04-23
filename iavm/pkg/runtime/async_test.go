@@ -575,6 +575,77 @@ func TestRunUntilSettledRetriesWaitTimeoutWithCapabilityProfile(t *testing.T) {
 	}
 }
 
+func TestComputeRetryBackoffUsesMultiplierAndCap(t *testing.T) {
+	if got := computeRetryBackoff(0, 10*time.Millisecond, 2, 50*time.Millisecond); got != 10*time.Millisecond {
+		t.Fatalf("attempt0 backoff = %v, want 10ms", got)
+	}
+	if got := computeRetryBackoff(1, 10*time.Millisecond, 2, 50*time.Millisecond); got != 20*time.Millisecond {
+		t.Fatalf("attempt1 backoff = %v, want 20ms", got)
+	}
+	if got := computeRetryBackoff(3, 10*time.Millisecond, 2, 50*time.Millisecond); got != 50*time.Millisecond {
+		t.Fatalf("attempt3 backoff = %v, want 50ms cap", got)
+	}
+}
+
+func TestRunUntilSettledUsesCapabilityRetryBackoffProfile(t *testing.T) {
+	host := newMockHost()
+	host.pollDeadlineFailures = 2
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"network", int64(37), "ready"},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"host_timeout_ms":      int64(5),
+					"retry_count":          int64(2),
+					"retry_backoff_ms":     int64(1),
+					"retry_backoff_max_ms": int64(2),
+					"retry_multiplier":     float64(2),
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 2},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled failed: %v", err)
+	}
+	if len(host.pollLog) < 3 {
+		t.Fatalf("expected capability retry attempts, got %#v", host.pollLog)
+	}
+}
+
 func moduleForAsyncTest(constants []any, code []core.Instruction) *module.Module {
 	return &module.Module{
 		Magic:     "IAVM",
