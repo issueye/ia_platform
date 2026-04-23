@@ -67,6 +67,35 @@ func (p Policy) ValidateHTTPRequest(req HTTPRequest) (*url.URL, error) {
 	return parsed, nil
 }
 
+func (p Policy) ValidateEndpoint(endpoint Endpoint) error {
+	networkName := strings.ToLower(strings.TrimSpace(endpoint.Network))
+	if networkName == "" {
+		networkName = "tcp"
+	}
+	switch networkName {
+	case "tcp", "tcp4", "tcp6", "udp", "udp4", "udp6":
+	default:
+		return fmt.Errorf("%w: unsupported network %s", ErrInvalidNetworkRequest, endpoint.Network)
+	}
+
+	host := strings.ToLower(strings.TrimSpace(endpoint.Host))
+	if host == "" {
+		return fmt.Errorf("%w: missing host", ErrInvalidNetworkRequest)
+	}
+	if err := p.validateHost(host); err != nil {
+		return err
+	}
+
+	if endpoint.Port <= 0 || endpoint.Port > 65535 {
+		return fmt.Errorf("%w: invalid port %d", ErrInvalidNetworkRequest, endpoint.Port)
+	}
+	if len(p.AllowPorts) > 0 && !containsInt(p.AllowPorts, endpoint.Port) {
+		return fmt.Errorf("%w: %d", ErrNetworkPortNotAllowed, endpoint.Port)
+	}
+
+	return nil
+}
+
 func (p Policy) validateHost(hostname string) error {
 	allowedByHost := len(p.AllowHosts) == 0 || containsStringFold(p.AllowHosts, hostname)
 	if len(p.AllowCIDRs) == 0 {

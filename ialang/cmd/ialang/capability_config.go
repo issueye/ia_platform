@@ -83,9 +83,25 @@ func applyCapabilityConfig(mod *module.Module, cfg *capabilityConfigFile) {
 }
 
 func buildRunIavmHost(cfg *capabilityConfigFile) (*api.DefaultHost, error) {
+	networkPolicy := hostnet.Policy{}
+	if cfg != nil {
+		networkPolicy = hostnet.Policy{
+			Rights:             copyStringSlice(cfg.Network.Rights),
+			AllowHosts:         copyStringSlice(cfg.Network.AllowHosts),
+			AllowPorts:         copyIntSlice(cfg.Network.AllowPorts),
+			AllowSchemes:       copyStringSlice(cfg.Network.AllowSchemes),
+			AllowCIDRs:         copyStringSlice(cfg.Network.AllowCIDRs),
+			MaxConnections:     cfg.Network.MaxConnections,
+			MaxInflightRequest: cfg.Network.MaxInflightRequest,
+			MaxBytesPerRequest: cfg.Network.MaxBytesPerRequest,
+		}
+	}
 	host := &api.DefaultHost{
-		FS:      &hostfs.MemFSProvider{},
-		Network: &hostnet.HTTPProvider{},
+		FS: &hostfs.MemFSProvider{},
+		Network: &hostnet.CompositeProvider{
+			HTTP:   &hostnet.HTTPProvider{Policy: networkPolicy},
+			Socket: &hostnet.SocketProvider{Policy: networkPolicy},
+		},
 	}
 	if cfg == nil {
 		return host, nil
@@ -106,20 +122,6 @@ func buildRunIavmHost(cfg *capabilityConfigFile) (*api.DefaultHost, error) {
 		}
 		host.FS = &hostfs.LocalFSProvider{Mapper: mapper}
 	}
-
-	host.Network = &hostnet.HTTPProvider{
-		Policy: hostnet.Policy{
-			Rights:             copyStringSlice(cfg.Network.Rights),
-			AllowHosts:         copyStringSlice(cfg.Network.AllowHosts),
-			AllowPorts:         copyIntSlice(cfg.Network.AllowPorts),
-			AllowSchemes:       copyStringSlice(cfg.Network.AllowSchemes),
-			AllowCIDRs:         copyStringSlice(cfg.Network.AllowCIDRs),
-			MaxConnections:     cfg.Network.MaxConnections,
-			MaxInflightRequest: cfg.Network.MaxInflightRequest,
-			MaxBytesPerRequest: cfg.Network.MaxBytesPerRequest,
-		},
-	}
-
 	return host, nil
 }
 

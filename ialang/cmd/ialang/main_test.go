@@ -13,8 +13,10 @@ import (
 	"iavm/pkg/core"
 	"iavm/pkg/module"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -257,15 +259,18 @@ func TestLoadCapabilityConfigAndBuildHost(t *testing.T) {
 		t.Fatal("expected LocalFSProvider mapper to be configured")
 	}
 
-	httpProvider, ok := host.Network.(*hostnet.HTTPProvider)
+	networkProvider, ok := host.Network.(*hostnet.CompositeProvider)
 	if !ok {
-		t.Fatalf("host Network = %T, want *hostnet.HTTPProvider", host.Network)
+		t.Fatalf("host Network = %T, want *hostnet.CompositeProvider", host.Network)
 	}
-	if len(httpProvider.Policy.AllowHosts) != 1 || httpProvider.Policy.AllowHosts[0] != "example.com" {
-		t.Fatalf("allow hosts = %#v, want [example.com]", httpProvider.Policy.AllowHosts)
+	if networkProvider.HTTP == nil || networkProvider.Socket == nil {
+		t.Fatal("expected composite provider to configure both HTTP and Socket providers")
 	}
-	if httpProvider.Policy.MaxBytesPerRequest != 1024 {
-		t.Fatalf("max bytes = %d, want 1024", httpProvider.Policy.MaxBytesPerRequest)
+	if len(networkProvider.HTTP.Policy.AllowHosts) != 1 || networkProvider.HTTP.Policy.AllowHosts[0] != "example.com" {
+		t.Fatalf("allow hosts = %#v, want [example.com]", networkProvider.HTTP.Policy.AllowHosts)
+	}
+	if networkProvider.HTTP.Policy.MaxBytesPerRequest != 1024 {
+		t.Fatalf("max bytes = %d, want 1024", networkProvider.HTTP.Policy.MaxBytesPerRequest)
 	}
 }
 
@@ -732,6 +737,99 @@ func TestRunCLIRunIavmCapConfigEnablesLocalFSPreopen(t *testing.T) {
 	code := runCLI([]string{"ialang", "run-iavm", modulePath, "--cap-config", configPath}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("runCLI run-iavm cap config code = %d, want 0, stderr=%q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunCLIRunIavmCapConfigEnablesNetworkDial(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen error: %v", err)
+	}
+	defer listener.Close()
+
+	go func() {
+		conn, err := listener.Accept()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}()
+
+	addr := listener.Addr().(*net.TCPAddr)
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "network-dial.iavm")
+	configPath := filepath.Join(dir, "caps.toml")
+	configText := "[network]\nrights = [\"socket\"]\nallow_hosts = [\"127.0.0.1\"]\nallow_ports = [" + strconv.Itoa(addr.Port) + "]\n"
+	if err := os.WriteFile(configPath, []byte(configText), 0o644); err != nil {
+		t.Fatalf("write cap config error: %v", err)
+	}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityNetwork},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Locals:    []core.ValueKind{core.ValueObjectRef},
+				Constants: []any{
+					"network",
+					"network", "tcp",
+					"host", "127.0.0.1",
+					"port", int64(addr.Port),
+					"network.dial",
+					"handle",
+					"network.close",
+				},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpConst, A: 3},
+					{Op: core.OpConst, A: 4},
+					{Op: core.OpConst, A: 5},
+					{Op: core.OpConst, A: 6},
+					{Op: core.OpMakeObject, A: 3},
+					{Op: core.OpConst, A: 7},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpStoreLocal, A: 0},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 8},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 8},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 9},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule unexpected error: %v", err)
+	}
+	if err := os.WriteFile(modulePath, data, 0o644); err != nil {
+		t.Fatalf("write module file error: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runCLI([]string{"ialang", "run-iavm", modulePath, "--cap-config", configPath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI run-iavm network dial code = %d, want 0, stderr=%q", code, stderr.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
