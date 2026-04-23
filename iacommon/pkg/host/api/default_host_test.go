@@ -106,6 +106,74 @@ func TestDefaultHostPropagatesReadOnlyFSRestrictions(t *testing.T) {
 	}
 }
 
+func TestDefaultHostFSAdaptersSupportAliasesAndStructuredResponses(t *testing.T) {
+	host := &DefaultHost{FS: newTestFSProvider(t, false)}
+	ctx := context.Background()
+
+	capability, err := host.AcquireCapability(ctx, AcquireRequest{Kind: CapabilityFS})
+	if err != nil {
+		t.Fatalf("acquire fs capability: %v", err)
+	}
+
+	_, err = host.Call(ctx, CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "fs.write_file",
+		Args: map[string]any{
+			"path":   "/workspace/source.txt",
+			"data":   "source",
+			"create": true,
+			"trunc":  true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	_, err = host.Call(ctx, CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "fs.rename",
+		Args: map[string]any{
+			"oldPath": "/workspace/source.txt",
+			"newPath": "/workspace/renamed.txt",
+		},
+	})
+	if err != nil {
+		t.Fatalf("rename through host: %v", err)
+	}
+
+	dirResult, err := host.Call(ctx, CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "fs.read_dir",
+		Args:         map[string]any{"path": "/workspace"},
+	})
+	if err != nil {
+		t.Fatalf("read dir through host: %v", err)
+	}
+	entries, ok := dirResult.Value["entries"].([]hostfs.DirEntry)
+	if !ok {
+		t.Fatalf("expected []hostfs.DirEntry result, got %#v", dirResult.Value["entries"])
+	}
+	if len(entries) != 1 || entries[0].Name != "renamed.txt" {
+		t.Fatalf("unexpected entries: %+v", entries)
+	}
+
+	statResult, err := host.Call(ctx, CallRequest{
+		CapabilityID: capability.ID,
+		Operation:    "fs.stat",
+		Args:         map[string]any{"path": "/workspace/renamed.txt"},
+	})
+	if err != nil {
+		t.Fatalf("stat through host: %v", err)
+	}
+	info, ok := statResult.Value["info"].(hostfs.FileInfo)
+	if !ok {
+		t.Fatalf("expected hostfs.FileInfo result, got %#v", statResult.Value["info"])
+	}
+	if info.Name != "renamed.txt" || info.IsDir {
+		t.Fatalf("unexpected file info: %+v", info)
+	}
+}
+
 func newTestFSProvider(t *testing.T, readOnly bool) hostfs.Provider {
 	t.Helper()
 

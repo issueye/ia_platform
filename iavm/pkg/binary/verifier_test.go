@@ -650,6 +650,87 @@ func TestVerifyModule_CapabilityAllowAllByDefault(t *testing.T) {
 	}
 }
 
+func TestVerifyModule_HostOperationRequiresDeclaredCapability(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"fs.read_file"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	_, err := VerifyModule(mod, VerifyOptions{})
+	if err == nil {
+		t.Fatal("expected missing fs capability declaration to be rejected")
+	}
+}
+
+func TestVerifyModule_HostOperationMatchesDeclaredCapability(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityNetwork},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Constants: []any{"network.http_fetch"},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 0},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	if _, err := VerifyModule(mod, VerifyOptions{}); err != nil {
+		t.Fatalf("expected declared network capability to satisfy host call, got %v", err)
+	}
+}
+
+func TestVerifyModule_HostOperationCheckSkipsDynamicOperationName(t *testing.T) {
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Locals:    []core.ValueKind{core.ValueString},
+				Code: []core.Instruction{
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpHostCall},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	if _, err := VerifyModule(mod, VerifyOptions{}); err != nil {
+		t.Fatalf("expected dynamic host operation names to remain verifier-compatible, got %v", err)
+	}
+}
+
 func resourceLimitTestModule() *module.Module {
 	return &module.Module{
 		Magic:     "IAVM",

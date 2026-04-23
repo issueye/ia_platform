@@ -12,7 +12,16 @@ import (
 
 func TestDefaultHostCallNetworkHTTPFetch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if r.Header.Get("X-Test") != "ok" {
+			t.Fatalf("unexpected header: %q", r.Header.Get("X-Test"))
+		}
 		w.Header().Set("Content-Type", "text/plain")
+		if got := r.Header.Get("X-Timeout-MS"); got != "25" {
+			t.Fatalf("unexpected timeout header: %q", got)
+		}
 		_, _ = w.Write([]byte("ok"))
 	}))
 	defer server.Close()
@@ -27,7 +36,11 @@ func TestDefaultHostCallNetworkHTTPFetch(t *testing.T) {
 		CapabilityID: capability.ID,
 		Operation:    "network.http_fetch",
 		Args: map[string]any{
-			"url": server.URL,
+			"url":       server.URL,
+			"method":    http.MethodPost,
+			"headers":   map[string]any{"X-Test": "ok", "X-Timeout-MS": "25"},
+			"body":      "ping",
+			"timeoutMS": 25,
 		},
 	})
 	if err != nil {

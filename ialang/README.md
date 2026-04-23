@@ -185,7 +185,12 @@ For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.4-closure-class-pl
 
 - `OpHostCall` 支持从栈上传递参数对象给 host capability
 - `fs.read_file` / `network.http_fetch` 等 operation 可直接接收结构化参数
-- 后续继续推进 finally 语义保证、Host ABI typed adapter 与 class 继承
+- FS typed request/response adapter 已接入 `DefaultHost`
+- Network HTTP typed request/response adapter 已接入 `DefaultHost`
+- verifier 已开始校验静态 host operation 与 capability 声明的一致性
+- 后续继续推进更广的 Host ABI typed adapter、`extends/super` 与平台异步语义
+
+For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.5-host-abi-control-flow-plan.md`.
 
 ---
 

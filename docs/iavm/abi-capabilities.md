@@ -307,6 +307,6 @@ runtime 可以先将这些错误包装成运行时错误；后续若接入 ialan
 后续建议：
 
 1. 为每个 operation 增加 table-driven host API 测试。
-2. 为 FS 和 Network 增加 typed request/response adapter。
-3. 在 verifier 或 runtime 初始化阶段校验模块声明 capability 与实际 host operation 的一致性。
+2. FS / Network typed request/response adapter 已接入 `DefaultHost`，后续再把更多 operation 纳入同一模式。
+3. verifier 已对静态 `OpHostCall` operation 名称执行 capability 一致性校验；动态 operation 名称仍保留运行时处理。
 4. 为 `run-iavm --cap-config` 设计 TOML 配置，并映射到 `AcquireRequest.Config`。

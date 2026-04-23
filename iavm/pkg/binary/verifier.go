@@ -566,6 +566,7 @@ func verifyCapabilities(m *module.Module, opts VerifyOptions) error {
 		allowed[kind] = true
 	}
 
+	declared := make(map[module.CapabilityKind]bool, len(m.Capabilities))
 	for i, cap := range m.Capabilities {
 		if cap.Kind != module.CapabilityFS && cap.Kind != module.CapabilityNetwork {
 			return fmt.Errorf("capability[%d]: invalid kind %q", i, cap.Kind)
@@ -573,8 +574,71 @@ func verifyCapabilities(m *module.Module, opts VerifyOptions) error {
 		if opts.CapabilityAllowlistSet && !allowed[cap.Kind] {
 			return fmt.Errorf("capability[%d]: kind %q is not allowed", i, cap.Kind)
 		}
+		declared[cap.Kind] = true
+	}
+
+	for fnIndex := range m.Functions {
+		if err := verifyFunctionHostCapabilities(fnIndex, &m.Functions[fnIndex], m, declared); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func verifyFunctionHostCapabilities(fnIndex int, fn *module.Function, m *module.Module, declared map[module.CapabilityKind]bool) error {
+	for instIndex, inst := range fn.Code {
+		if inst.Op != core.OpHostCall || instIndex == 0 {
+			continue
+		}
+
+		prev := fn.Code[instIndex-1]
+		if prev.Op != core.OpConst {
+			continue
+		}
+
+		opName, ok := resolveConstString(m, fn, prev.A)
+		if !ok || opName == "" {
+			continue
+		}
+
+		requiredCap, ok := capabilityForOperation(opName)
+		if !ok {
+			continue
+		}
+		if !declared[requiredCap] {
+			return fmt.Errorf("function[%d]: instruction[%d]: host operation %q requires capability %q", fnIndex, instIndex, opName, requiredCap)
+		}
+	}
+	return nil
+}
+
+func resolveConstString(m *module.Module, fn *module.Function, index uint32) (string, bool) {
+	var value any
+	if len(m.Constants) > 0 {
+		if int(index) >= len(m.Constants) {
+			return "", false
+		}
+		value = m.Constants[index]
+	} else {
+		if int(index) >= len(fn.Constants) {
+			return "", false
+		}
+		value = fn.Constants[index]
+	}
+
+	text, ok := value.(string)
+	return text, ok
+}
+
+func capabilityForOperation(operation string) (module.CapabilityKind, bool) {
+	switch {
+	case len(operation) > len("fs.") && operation[:len("fs.")] == "fs.":
+		return module.CapabilityFS, true
+	case len(operation) > len("network.") && operation[:len("network.")] == "network.":
+		return module.CapabilityNetwork, true
+	default:
+		return "", false
+	}
 }
 
 func verifyEntry(m *module.Module) error {

@@ -140,96 +140,81 @@ func (h *DefaultHost) callFS(ctx context.Context, req CallRequest) (CallResult, 
 
 	switch req.Operation {
 	case "fs.read_file":
-		path, err := readString(req.Args, "path")
+		parsed, err := decodeFSReadFileRequest(req.Args)
 		if err != nil {
 			return CallResult{}, err
 		}
-		data, err := h.FS.ReadFile(ctx, path)
+		data, err := h.FS.ReadFile(ctx, parsed.Path)
 		if err != nil {
 			return CallResult{}, err
 		}
-		return CallResult{Value: map[string]any{"data": data}}, nil
+		return encodeFSReadFileResponse(data), nil
 	case "fs.write_file":
-		path, err := readString(req.Args, "path")
+		parsed, err := decodeFSWriteFileRequest(req.Args)
 		if err != nil {
 			return CallResult{}, err
 		}
-		data, err := readBytes(req.Args, "data")
+		err = h.FS.WriteFile(ctx, parsed.Path, parsed.Data, parsed.Opts)
 		if err != nil {
 			return CallResult{}, err
 		}
-		err = h.FS.WriteFile(ctx, path, data, hostfs.WriteOptions{
-			Create: readBool(req.Args, "create"),
-			Trunc:  readBool(req.Args, "trunc"),
-		})
-		if err != nil {
-			return CallResult{}, err
-		}
-		return CallResult{Value: map[string]any{}}, nil
+		return emptyCallResult(), nil
 	case "fs.append_file":
-		path, err := readString(req.Args, "path")
+		parsed, err := decodeFSAppendFileRequest(req.Args)
 		if err != nil {
 			return CallResult{}, err
 		}
-		data, err := readBytes(req.Args, "data")
-		if err != nil {
+		if err := h.FS.AppendFile(ctx, parsed.Path, parsed.Data); err != nil {
 			return CallResult{}, err
 		}
-		if err := h.FS.AppendFile(ctx, path, data); err != nil {
-			return CallResult{}, err
-		}
-		return CallResult{Value: map[string]any{}}, nil
+		return emptyCallResult(), nil
 	case "fs.read_dir":
-		path, err := readString(req.Args, "path")
+		parsed, err := decodeFSReadDirRequest(req.Args)
 		if err != nil {
 			return CallResult{}, err
 		}
-		entries, err := h.FS.ReadDir(ctx, path)
+		entries, err := h.FS.ReadDir(ctx, parsed.Path)
 		if err != nil {
 			return CallResult{}, err
 		}
-		return CallResult{Value: map[string]any{"entries": entries}}, nil
+		return encodeFSReadDirResponse(entries), nil
 	case "fs.stat":
-		path, err := readString(req.Args, "path")
+		parsed, err := decodeFSStatRequest(req.Args)
 		if err != nil {
 			return CallResult{}, err
 		}
-		info, err := h.FS.Stat(ctx, path)
+		info, err := h.FS.Stat(ctx, parsed.Path)
 		if err != nil {
 			return CallResult{}, err
 		}
-		return CallResult{Value: map[string]any{"info": info}}, nil
+		return encodeFSStatResponse(info), nil
 	case "fs.mkdir":
-		path, err := readString(req.Args, "path")
+		parsed, err := decodeFSMkdirRequest(req.Args)
 		if err != nil {
 			return CallResult{}, err
 		}
-		if err := h.FS.Mkdir(ctx, path, hostfs.MkdirOptions{Recursive: readBool(req.Args, "recursive")}); err != nil {
+		if err := h.FS.Mkdir(ctx, parsed.Path, parsed.Opts); err != nil {
 			return CallResult{}, err
 		}
-		return CallResult{Value: map[string]any{}}, nil
+		return emptyCallResult(), nil
 	case "fs.remove":
-		path, err := readString(req.Args, "path")
+		parsed, err := decodeFSRemoveRequest(req.Args)
 		if err != nil {
 			return CallResult{}, err
 		}
-		if err := h.FS.Remove(ctx, path, hostfs.RemoveOptions{Recursive: readBool(req.Args, "recursive")}); err != nil {
+		if err := h.FS.Remove(ctx, parsed.Path, parsed.Opts); err != nil {
 			return CallResult{}, err
 		}
-		return CallResult{Value: map[string]any{}}, nil
+		return emptyCallResult(), nil
 	case "fs.rename":
-		oldPath, err := readStringAny(req.Args, "old_path", "oldPath")
+		parsed, err := decodeFSRenameRequest(req.Args)
 		if err != nil {
 			return CallResult{}, err
 		}
-		newPath, err := readStringAny(req.Args, "new_path", "newPath")
-		if err != nil {
+		if err := h.FS.Rename(ctx, parsed.OldPath, parsed.NewPath); err != nil {
 			return CallResult{}, err
 		}
-		if err := h.FS.Rename(ctx, oldPath, newPath); err != nil {
-			return CallResult{}, err
-		}
-		return CallResult{Value: map[string]any{}}, nil
+		return emptyCallResult(), nil
 	default:
 		return CallResult{}, fmt.Errorf("unknown fs operation: %w: %s", ErrCapabilityUnsupported, req.Operation)
 	}
@@ -242,43 +227,15 @@ func (h *DefaultHost) callNetwork(ctx context.Context, req CallRequest) (CallRes
 
 	switch req.Operation {
 	case "network.http_fetch":
-		requestURL, err := readString(req.Args, "url")
+		parsed, err := decodeNetworkHTTPFetchRequest(req.Args)
 		if err != nil {
 			return CallResult{}, err
 		}
-		method, err := readOptionalStringAny(req.Args, "method")
+		response, err := h.Network.HTTPFetch(ctx, parsed.toProviderRequest())
 		if err != nil {
 			return CallResult{}, err
 		}
-		headers, err := readStringMap(req.Args, "headers")
-		if err != nil {
-			return CallResult{}, err
-		}
-		body, err := readOptionalBytes(req.Args, "body")
-		if err != nil {
-			return CallResult{}, err
-		}
-		timeoutMS, err := readOptionalInt64Any(req.Args, "timeout_ms", "timeoutMS")
-		if err != nil {
-			return CallResult{}, err
-		}
-
-		response, err := h.Network.HTTPFetch(ctx, hostnet.HTTPRequest{
-			Method:    method,
-			URL:       requestURL,
-			Headers:   headers,
-			Body:      body,
-			TimeoutMS: timeoutMS,
-		})
-		if err != nil {
-			return CallResult{}, err
-		}
-
-		return CallResult{Value: map[string]any{
-			"status":  response.Status,
-			"headers": response.Headers,
-			"body":    response.Body,
-		}}, nil
+		return encodeNetworkHTTPFetchResponse(response), nil
 	default:
 		return CallResult{}, fmt.Errorf("unknown network operation: %w: %s", ErrCapabilityUnsupported, req.Operation)
 	}
