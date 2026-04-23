@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -403,7 +404,7 @@ func (h *DefaultHost) callNetwork(ctx context.Context, capability CapabilityInst
 			return CallResult{}, markTransientNetworkError(err)
 		}
 		if shouldRetryHTTPStatus(capability.Meta, response.Status) {
-			return CallResult{}, MarkRetryable(fmt.Errorf("retryable http status: %d", response.Status))
+			return CallResult{}, retryableHTTPStatusError(response.Status, response.Headers)
 		}
 		return encodeNetworkHTTPFetchResponse(response), nil
 	case "network.dial":
@@ -517,6 +518,39 @@ func shouldRetryHTTPStatus(meta map[string]any, status int) bool {
 		}
 	}
 	return false
+}
+
+func retryableHTTPStatusError(status int, headers map[string]string) error {
+	err := fmt.Errorf("retryable http status: %d", status)
+	if backoff, ok := parseRetryAfterHeader(headers); ok {
+		return MarkRetryableAfter(err, backoff)
+	}
+	return MarkRetryable(err)
+}
+
+func parseRetryAfterHeader(headers map[string]string) (time.Duration, bool) {
+	if headers == nil {
+		return 0, false
+	}
+	value, ok := headers["Retry-After"]
+	if !ok || value == "" {
+		return 0, false
+	}
+	if seconds, err := time.ParseDuration(value + "s"); err == nil {
+		if seconds < 0 {
+			return 0, true
+		}
+		return seconds, true
+	}
+	at, err := http.ParseTime(value)
+	if err != nil {
+		return 0, false
+	}
+	wait := time.Until(at)
+	if wait < 0 {
+		return 0, true
+	}
+	return wait, true
 }
 
 func (h *DefaultHost) storeSocketHandle(handle hostnet.SocketHandle) uint64 {

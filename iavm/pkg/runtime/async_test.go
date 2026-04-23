@@ -690,6 +690,20 @@ func TestApplyRetryJitterUsesDeterministicSeed(t *testing.T) {
 	}
 }
 
+func TestNextRetryBackoffPrefersRetryHintOverComputedBackoff(t *testing.T) {
+	vm := &VM{retryRand: rand.New(rand.NewSource(1))}
+
+	err := api.MarkRetryableAfter(errors.New("retry later"), 3*time.Second)
+	if got := vm.nextRetryBackoff(err, 0, 10*time.Millisecond, 5*time.Second, 2, 0.5); got != 3*time.Second {
+		t.Fatalf("hinted backoff = %v, want 3s", got)
+	}
+
+	err = api.MarkRetryableAfter(errors.New("retry later"), 10*time.Second)
+	if got := vm.nextRetryBackoff(err, 0, 10*time.Millisecond, 5*time.Second, 2, 0.5); got != 5*time.Second {
+		t.Fatalf("capped hinted backoff = %v, want 5s", got)
+	}
+}
+
 func TestHostPollPendingPromisePreservesCapabilityRetryJitterProfile(t *testing.T) {
 	host := newMockHost()
 	host.pollResult = api.PollResult{

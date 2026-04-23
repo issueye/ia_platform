@@ -328,8 +328,7 @@ func (vm *VM) retryPollLike(ctx context.Context, retryCount int, retryBackoff ti
 		if !vm.shouldRetryHostOperation(ctx, err) || attempt == attempts-1 {
 			return api.PollResult{}, err
 		}
-		backoff := computeRetryBackoff(attempt, retryBackoff, retryMultiplier, retryMaxBackoff)
-		backoff = vm.applyRetryJitter(backoff, retryJitter, retryMaxBackoff)
+		backoff := vm.nextRetryBackoff(err, attempt, retryBackoff, retryMaxBackoff, retryMultiplier, retryJitter)
 		if err := vm.sleepBackoff(ctx, backoff); err != nil {
 			return api.PollResult{}, err
 		}
@@ -355,13 +354,26 @@ func (vm *VM) retryCallLike(ctx context.Context, retryEnabled bool, retryCount i
 		if !vm.shouldRetryHostOperation(ctx, err) || attempt == attempts-1 {
 			return api.CallResult{}, err
 		}
-		backoff := computeRetryBackoff(attempt, retryBackoff, retryMultiplier, retryMaxBackoff)
-		backoff = vm.applyRetryJitter(backoff, retryJitter, retryMaxBackoff)
+		backoff := vm.nextRetryBackoff(err, attempt, retryBackoff, retryMaxBackoff, retryMultiplier, retryJitter)
 		if err := vm.sleepBackoff(ctx, backoff); err != nil {
 			return api.CallResult{}, err
 		}
 	}
 	return api.CallResult{}, lastErr
+}
+
+func (vm *VM) nextRetryBackoff(err error, attempt int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMultiplier float64, retryJitter float64) time.Duration {
+	if hinted, ok := api.RetryBackoffHint(err); ok {
+		if hinted < 0 {
+			hinted = 0
+		}
+		if retryMaxBackoff > 0 && hinted > retryMaxBackoff {
+			return retryMaxBackoff
+		}
+		return hinted
+	}
+	backoff := computeRetryBackoff(attempt, retryBackoff, retryMultiplier, retryMaxBackoff)
+	return vm.applyRetryJitter(backoff, retryJitter, retryMaxBackoff)
 }
 
 func (vm *VM) applyRetryJitter(backoff time.Duration, ratio float64, max time.Duration) time.Duration {

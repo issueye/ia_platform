@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	hostnet "iacommon/pkg/host/network"
 )
@@ -526,6 +527,7 @@ func TestDefaultHostDoesNotMarkPolicyNetworkErrorsRetryable(t *testing.T) {
 
 func TestDefaultHostMarksConfiguredHTTPStatusesRetryable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "3")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte("retry later"))
 	}))
@@ -554,6 +556,10 @@ func TestDefaultHostMarksConfiguredHTTPStatusesRetryable(t *testing.T) {
 	}
 	if !IsRetryableError(err) {
 		t.Fatalf("expected retryable http status error, got %v", err)
+	}
+	backoff, ok := RetryBackoffHint(err)
+	if !ok || backoff != 3*time.Second {
+		t.Fatalf("expected 3s retry hint, got %v ok=%v", backoff, ok)
 	}
 }
 
