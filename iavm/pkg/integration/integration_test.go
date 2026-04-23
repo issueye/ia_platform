@@ -6,7 +6,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"iacommon/pkg/host/api"
 	hostfs "iacommon/pkg/host/fs"
@@ -608,6 +610,203 @@ func TestFullPipeline_NetworkHandleDialSendRecv(t *testing.T) {
 	}
 	if val.Kind != core.ValueBytes || string(val.Raw.([]byte)) != "pong" {
 		t.Fatalf("unexpected recv result: %#v", val)
+	}
+}
+
+func TestFullPipeline_NetworkHandleListenAcceptSendRecv(t *testing.T) {
+	reserved, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve port failed: %v", err)
+	}
+	port := reserved.Addr().(*net.TCPAddr).Port
+	if err := reserved.Close(); err != nil {
+		t.Fatalf("release reserved port failed: %v", err)
+	}
+
+	clientResult := make(chan []byte, 1)
+	clientErr := make(chan error, 1)
+	go func() {
+		deadline := time.Now().Add(2 * time.Second)
+		var conn net.Conn
+		var dialErr error
+		target := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		for time.Now().Before(deadline) {
+			conn, dialErr = net.DialTimeout("tcp", target, 50*time.Millisecond)
+			if conn != nil {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		if conn == nil {
+			clientErr <- dialErr
+			return
+		}
+		defer conn.Close()
+
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			clientErr <- err
+			return
+		}
+
+		buf := make([]byte, 4)
+		if _, err := io.ReadFull(conn, buf); err != nil {
+			clientErr <- err
+			return
+		}
+		clientResult <- buf
+		clientErr <- nil
+	}()
+
+	host := &api.DefaultHost{
+		Network: &hostnet.CompositeProvider{
+			HTTP: &hostnet.HTTPProvider{Policy: hostnet.Policy{
+				AllowSchemes: []string{"http", "https"},
+			}},
+			Socket: &hostnet.SocketProvider{Policy: hostnet.Policy{
+				AllowHosts: []string{"127.0.0.1"},
+				AllowPorts: []int{port},
+			}},
+		},
+	}
+
+	mod := &module.Module{
+		Magic:   "IAVM",
+		Version: 1,
+		Target:  "ialang",
+		Types:   []core.FuncType{{}},
+		Constants: []any{
+			"network",
+			"network", "tcp",
+			"host", "127.0.0.1",
+			"port", int64(port),
+			"backlog", int64(1),
+			"network.listen",
+			"handle",
+			"network.accept",
+			"network.recv",
+			"size", int64(4),
+			"network.send",
+			"data", "pong",
+			"network.close",
+			"ready",
+		},
+		Capabilities: []module.CapabilityDecl{
+			{Kind: module.CapabilityNetwork},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Locals: []core.ValueKind{
+					core.ValueObjectRef,
+					core.ValueObjectRef,
+					core.ValueObjectRef,
+				},
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpConst, A: 2},
+					{Op: core.OpConst, A: 3},
+					{Op: core.OpConst, A: 4},
+					{Op: core.OpConst, A: 5},
+					{Op: core.OpConst, A: 6},
+					{Op: core.OpConst, A: 7},
+					{Op: core.OpConst, A: 8},
+					{Op: core.OpMakeObject, A: 4},
+					{Op: core.OpConst, A: 9},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpStoreLocal, A: 0},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 10},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 19},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 10},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 10},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 11},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpStoreLocal, A: 1},
+					{Op: core.OpConst, A: 10},
+					{Op: core.OpLoadLocal, A: 1},
+					{Op: core.OpGetProp, A: 10},
+					{Op: core.OpConst, A: 13},
+					{Op: core.OpConst, A: 14},
+					{Op: core.OpMakeObject, A: 2},
+					{Op: core.OpConst, A: 12},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpStoreLocal, A: 2},
+					{Op: core.OpConst, A: 10},
+					{Op: core.OpLoadLocal, A: 1},
+					{Op: core.OpGetProp, A: 10},
+					{Op: core.OpConst, A: 16},
+					{Op: core.OpConst, A: 17},
+					{Op: core.OpMakeObject, A: 2},
+					{Op: core.OpConst, A: 15},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 10},
+					{Op: core.OpLoadLocal, A: 1},
+					{Op: core.OpGetProp, A: 10},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 18},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpConst, A: 10},
+					{Op: core.OpLoadLocal, A: 0},
+					{Op: core.OpGetProp, A: 10},
+					{Op: core.OpMakeObject, A: 1},
+					{Op: core.OpConst, A: 18},
+					{Op: core.OpHostCall, A: 1},
+					{Op: core.OpPop},
+					{Op: core.OpLoadLocal, A: 2},
+					{Op: core.OpGetProp, A: 16},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	result, err := binary.VerifyModule(mod, binary.VerifyOptions{})
+	if err != nil {
+		t.Fatalf("VerifyModule failed: %v", err)
+	}
+	if !result.Valid {
+		t.Fatal("module not valid")
+	}
+
+	data, err := binary.EncodeModule(mod)
+	if err != nil {
+		t.Fatalf("EncodeModule failed: %v", err)
+	}
+	decoded, err := binary.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("DecodeModule failed: %v", err)
+	}
+
+	vm, err := runtime.New(decoded, runtime.Options{Host: host})
+	if err != nil {
+		t.Fatalf("New VM failed: %v", err)
+	}
+	if err := vm.Run(); err != nil {
+		t.Fatalf("VM.Run failed: %v", err)
+	}
+
+	val, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected result on stack")
+	}
+	if val.Kind != core.ValueBytes || string(val.Raw.([]byte)) != "ping" {
+		t.Fatalf("unexpected recv result: %#v", val)
+	}
+
+	if err := <-clientErr; err != nil {
+		t.Fatalf("client flow failed: %v", err)
+	}
+	if got := <-clientResult; string(got) != "pong" {
+		t.Fatalf("client recv = %q, want pong", string(got))
 	}
 }
 
