@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
+
+	"iacommon/pkg/host/api"
 )
 
 type CompiledFunction struct {
@@ -152,6 +154,51 @@ func (vm *VM) ResumeSuspension() error {
 		return nil
 	}
 	return Interpret(vm, vm.frames[len(vm.frames)-1].FunctionIndex)
+}
+
+func (vm *VM) WaitSuspension(ctx context.Context) error {
+	if vm.suspension == nil {
+		return fmt.Errorf("vm is not suspended")
+	}
+	if vm.options.Host == nil {
+		return fmt.Errorf("no host configured for suspended wait")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	promise := vm.suspension.AwaitValue
+	if promise.Kind != core.ValuePromise {
+		return vm.ResumeSuspension()
+	}
+	state, ok := promise.Raw.(*promiseState)
+	if !ok || state == nil {
+		return fmt.Errorf("invalid promise value")
+	}
+	if state.Status != promiseStatusPending || state.PollHandleID == 0 {
+		return vm.ResumeSuspension()
+	}
+
+	waiter, ok := vm.options.Host.(api.Waiter)
+	if !ok {
+		return fmt.Errorf("host does not support suspension wait")
+	}
+
+	result, err := waiter.Wait(ctx, state.PollHandleID)
+	if err != nil {
+		return err
+	}
+	switch {
+	case !result.Done:
+		return ErrPromisePending
+	case result.Error != "":
+		state.Status = promiseStatusRejected
+		state.Error = result.Error
+	default:
+		state.Status = promiseStatusResolved
+		state.Result = coreValueFromHostPoll(result)
+	}
+	return vm.ResumeSuspension()
 }
 
 func (vm *VM) resolveStringConstant(fn *module.Function, index uint32) (string, bool) {

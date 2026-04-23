@@ -8,3 +8,7 @@ type Host interface {
 	Call(ctx context.Context, req CallRequest) (CallResult, error)
 	Poll(ctx context.Context, handleID uint64) (PollResult, error)
 }
+
+type Waiter interface {
+	Wait(ctx context.Context, handleID uint64) (PollResult, error)
+}

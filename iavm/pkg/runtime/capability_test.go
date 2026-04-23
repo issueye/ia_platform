@@ -18,6 +18,9 @@ type mockHost struct {
 	pollLog    []uint64
 	pollResult api.PollResult
 	pollErr    error
+	waitLog    []uint64
+	waitResult api.PollResult
+	waitErr    error
 }
 
 func newMockHost() *mockHost {
@@ -49,6 +52,11 @@ func (h *mockHost) Call(ctx context.Context, req api.CallRequest) (api.CallResul
 func (h *mockHost) Poll(ctx context.Context, handleID uint64) (api.PollResult, error) {
 	h.pollLog = append(h.pollLog, handleID)
 	return h.pollResult, h.pollErr
+}
+
+func (h *mockHost) Wait(ctx context.Context, handleID uint64) (api.PollResult, error) {
+	h.waitLog = append(h.waitLog, handleID)
+	return h.waitResult, h.waitErr
 }
 
 func TestCapability_AcquireAndCall(t *testing.T) {

@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -187,6 +188,50 @@ func TestHostPollAwaitSuspendsAndResumesRuntime(t *testing.T) {
 	}
 	if result.Kind != core.ValueBool || !result.Raw.(bool) {
 		t.Fatalf("unexpected resumed result: %#v", result)
+	}
+}
+
+func TestHostPollWaitSuspensionResumesRuntime(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := moduleForAsyncTest([]any{int64(11), "ready"}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpGetProp, A: 1},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	err = vm.Run()
+	if !errors.Is(err, ErrPromisePending) {
+		t.Fatalf("Run error = %v, want ErrPromisePending", err)
+	}
+
+	if err := vm.WaitSuspension(context.Background()); err != nil {
+		t.Fatalf("WaitSuspension failed: %v", err)
+	}
+	if len(host.waitLog) != 1 || host.waitLog[0] != 11 {
+		t.Fatalf("unexpected wait log: %#v", host.waitLog)
+	}
+
+	result, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected waited result on stack")
+	}
+	if result.Kind != core.ValueBool || !result.Raw.(bool) {
+		t.Fatalf("unexpected waited result: %#v", result)
 	}
 }
 

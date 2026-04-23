@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	hostfs "iacommon/pkg/host/fs"
 	hostnet "iacommon/pkg/host/network"
@@ -123,6 +124,28 @@ func (h *DefaultHost) Poll(ctx context.Context, handleID uint64) (PollResult, er
 		}
 	}
 	return PollResult{}, fmt.Errorf("%w: %d", ErrCapabilityNotFound, handleID)
+}
+
+func (h *DefaultHost) Wait(ctx context.Context, handleID uint64) (PollResult, error) {
+	for {
+		result, err := h.Poll(ctx, handleID)
+		if err != nil {
+			return PollResult{}, err
+		}
+		if result.Done {
+			return result, nil
+		}
+
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return PollResult{}, ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func (h *DefaultHost) newCapabilityInstance(req AcquireRequest) (CapabilityInstance, error) {
