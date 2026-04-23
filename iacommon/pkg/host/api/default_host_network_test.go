@@ -713,3 +713,59 @@ func TestDefaultHostDoesNotRetryUnmatchedHTTPStatusClass(t *testing.T) {
 		t.Fatalf("unexpected status result: %#v", result.Value["status"])
 	}
 }
+
+func TestDefaultHostUsesDefaultSafeHTTPMethodsWhenEnabled(t *testing.T) {
+	tests := []struct {
+		name      string
+		method    string
+		wantRetry bool
+	}{
+		{name: "get_retries", method: http.MethodGet, wantRetry: true},
+		{name: "delete_retries", method: http.MethodDelete, wantRetry: true},
+		{name: "post_skips", method: http.MethodPost, wantRetry: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte("retry later"))
+			}))
+			defer server.Close()
+
+			host := &DefaultHost{Network: &hostnet.HTTPProvider{Policy: hostnet.Policy{AllowSchemes: []string{"http", "https"}}}}
+			capability, err := host.AcquireCapability(context.Background(), AcquireRequest{
+				Kind: CapabilityNetwork,
+				Config: map[string]any{
+					"retry_http_status_classes":       []any{5},
+					"retry_http_default_safe_methods": true,
+				},
+			})
+			if err != nil {
+				t.Fatalf("acquire network capability: %v", err)
+			}
+
+			result, err := host.Call(context.Background(), CallRequest{
+				CapabilityID: capability.ID,
+				Operation:    "network.http_fetch",
+				Args: map[string]any{
+					"url":    server.URL,
+					"method": tt.method,
+				},
+			})
+
+			if tt.wantRetry {
+				if err == nil || !IsRetryableError(err) {
+					t.Fatalf("expected retryable error, got result=%#v err=%v", result, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected raw response, got %v", err)
+			}
+			if status, ok := result.Value["status"].(int); !ok || status != http.StatusServiceUnavailable {
+				t.Fatalf("unexpected status result: %#v", result.Value["status"])
+			}
+		})
+	}
+}

@@ -521,6 +521,10 @@ func shouldRetryHTTPStatus(meta map[string]any, status int, method string) bool 
 		if !matched {
 			return false
 		}
+	} else if readBoolAny(meta, "retry_http_default_safe_methods", "retryHTTPDefaultSafeMethods") {
+		if !isDefaultRetrySafeHTTPMethod(method) {
+			return false
+		}
 	}
 	statuses, hasStatuses := readIntList(meta, "retry_http_statuses", "retryHTTPStatuses")
 	for _, candidate := range statuses {
@@ -547,6 +551,15 @@ func normalizeHTTPMethod(method string) string {
 		return http.MethodGet
 	}
 	return method
+}
+
+func isDefaultRetrySafeHTTPMethod(method string) bool {
+	switch normalizeHTTPMethod(method) {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace, http.MethodPut, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
 }
 
 func retryableHTTPStatusError(status int, headers map[string]string) error {
@@ -738,6 +751,15 @@ func readBool(args map[string]any, key string) bool {
 		return false
 	}
 	return flag
+}
+
+func readBoolAny(values map[string]any, keys ...string) bool {
+	for _, key := range keys {
+		if readBool(values, key) {
+			return true
+		}
+	}
+	return false
 }
 
 func readOptionalInt64Any(args map[string]any, keys ...string) (int64, error) {
