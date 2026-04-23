@@ -297,7 +297,7 @@ FS capability kind 为 `fs`，由 `host/fs.Provider` 执行底层操作。
 - `Options.RetryCallOps` 可显式声明允许自动重试的 `host.call` operation allowlist
 - capability `Config.host_timeout_ms` / `Config.wait_timeout_ms` 可覆盖默认 operation timeout
 - capability `Config.retry_count` / `Config.retry_backoff_ms` 可覆盖默认 retry/backoff
-- capability `Config.retry_multiplier` / `Config.retry_backoff_max_ms` / `Config.retry_jitter` 可覆盖默认 backoff 曲线与抖动策略
+- capability `Config.retry_multiplier` / `Config.retry_backoff_max_ms` / `Config.retry_max_elapsed_ms` / `Config.retry_jitter` 可覆盖默认 backoff 曲线、总重试时间预算与抖动策略
 - capability `Config.retry_call_ops` 可覆盖默认 `host.call` retry allowlist
 - pending promise 会保留触发时的 capability timeout profile，用于后续恢复路径
 - pending promise 也会保留触发时的 retry/backoff profile，用于后续恢复路径
