@@ -576,6 +576,80 @@ func TestRunUntilSettledRetriesWaitTimeoutWithCapabilityProfile(t *testing.T) {
 	}
 }
 
+func TestRunUntilSettledRetriesExplicitRetryablePollError(t *testing.T) {
+	host := newMockHost()
+	host.pollRetryableFailures = 1
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := moduleForAsyncTest([]any{int64(41), "ready"}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpGetProp, A: 1},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		RetryCount:   1,
+		RetryBackoff: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled failed: %v", err)
+	}
+	if len(host.pollLog) < 2 {
+		t.Fatalf("expected retryable poll attempts, got %#v", host.pollLog)
+	}
+}
+
+func TestRunUntilSettledRetriesExplicitRetryableWaitError(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+	host.waitRetryableFailures = 1
+	host.waitResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+
+	mod := moduleForAsyncTest([]any{int64(43), "ready"}, []core.Instruction{
+		{Op: core.OpConst, A: 0},
+		{Op: core.OpHostPoll},
+		{Op: core.OpAwait},
+		{Op: core.OpGetProp, A: 1},
+		{Op: core.OpReturn},
+	})
+
+	vm, err := New(mod, Options{
+		Host:         host,
+		RetryCount:   1,
+		RetryBackoff: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	if err := vm.RunUntilSettled(context.Background()); err != nil {
+		t.Fatalf("RunUntilSettled failed: %v", err)
+	}
+	if len(host.waitLog) < 2 {
+		t.Fatalf("expected retryable wait attempts, got %#v", host.waitLog)
+	}
+}
+
 func TestComputeRetryBackoffUsesMultiplierAndCap(t *testing.T) {
 	if got := computeRetryBackoff(0, 10*time.Millisecond, 2, 50*time.Millisecond); got != 10*time.Millisecond {
 		t.Fatalf("attempt0 backoff = %v, want 10ms", got)

@@ -410,7 +410,7 @@ func (vm *VM) shouldRetryHostOperation(ctx context.Context, err error) bool {
 	if ctx != nil && ctx.Err() != nil {
 		return false
 	}
-	return errors.Is(err, context.DeadlineExceeded)
+	return errors.Is(err, context.DeadlineExceeded) || api.IsRetryableError(err)
 }
 
 func (vm *VM) sleepBackoff(ctx context.Context, backoff time.Duration) error {
