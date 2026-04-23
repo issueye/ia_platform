@@ -42,6 +42,69 @@ go build -o ./bin/ialang ./ialang/cmd/ialang
 
 For the detailed milestone plan, see `../docs/plans/2026-04-23-iavm-0.0.1-platform-program-plan.md`.
 
+---
+
+## 0.0.2 Platform Hardening
+
+`0.0.2` 在 `0.0.1` 最小平台闭环基础上硬化平台路径，优先提升 verifier/profile 一致性、CLI 诊断质量和示例矩阵覆盖率。
+
+### IAVM Profile 语义
+
+| Profile | require-entry | Resource Limits | Capability 策略 |
+|---------|:---:|---|---|
+| `default` | - | 无限制 | allow-all |
+| `strict` | ✅ | 无限制 | allow-all |
+| `sandbox` | ✅ | max-functions=128, max-constants=512, max-code-size=4096, max-locals=64, max-stack=128 | deny-all |
+
+Capability allowlist 语义：
+
+- **未设置** (`--allow-capability` 未指定)：允许所有 capability
+- **显式空** (指定了 `--allow-capability` 但无值)：deny-all
+- **非空列表** (如 `--allow-capability fs --allow-capability network`)：仅允许列出的 capability
+
+可通过 `--max-functions`、`--max-constants`、`--max-code-size`、`--max-locals`、`--max-stack` 覆盖 profile 默认限制。
+
+### IAVM 示例矩阵
+
+| 示例 | 路径 | 覆盖维度 | 推荐 Profile | 期望输出 |
+|------|------|----------|:---:|---|
+| 最小示例 | `examples/iavm_hello.ia` | if/else + print | sandbox | `iavm hello` |
+| 控制流 | `examples/iavm_control.ia` | while / if / && | sandbox | `while-ok` `logic-ok` |
+| 函数调用 | `examples/iavm_function.ia` | function 定义与调用 | sandbox | `func-ok` |
+| 算术运算 | `examples/iavm_arith.ia` | 算术 + 条件判断 | sandbox | `array-ok` |
+
+### 0.0.2 smoke 命令
+
+```bash
+go build -o ./bin/ialang ./ialang/cmd/ialang
+
+# 矩阵中所有示例
+for ex in iavm_hello iavm_control iavm_function iavm_arith; do
+  ./bin/ialang build-iavm ./ialang/examples/$ex.ia -o ./tmp/$ex.iavm
+  ./bin/ialang verify-iavm ./tmp/$ex.iavm --profile sandbox
+  ./bin/ialang run-iavm ./tmp/$ex.iavm --profile sandbox
+done
+```
+
+### CLI 错误分层
+
+所有 IAVM 命令的错误输出带有分层前缀，方便定位失败层：
+
+| 前缀 | 含义 |
+|------|------|
+| `[compile]` | 编译 / lowering / 编码阶段失败 |
+| `[decode]` | 二进制解码 / 文件读取阶段失败 |
+| `[verify]` | 模块验证 / policy 检查失败 |
+| `[runtime]` | VM 执行阶段失败 |
+
+### 已知限制
+
+- **外部模块导入不支持**：使用 `import { x } from "@agent/sdk"` 的示例（如 `hello.ia`）会因 `cannot get property from non-object` 在运行时失败。IAVM 当前不支持外部模块系统。
+- **字符串拼接类型限制**：`addValues` 不支持 string + number 隐式转换，字符串拼接需使用 `str()` 内建函数。
+- **数组索引类型**：IAVM 数组索引要求整数类型（I64），浮点数索引会报错。
+
+For the detailed plan, see `../docs/plans/2026-04-23-iavm-0.0.2-platform-hardening-plan.md`.
+
 ## Documentation
 
 - Usage guide: [docs/usage-guide.md](docs/usage-guide.md)
