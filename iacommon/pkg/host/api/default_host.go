@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -403,7 +404,7 @@ func (h *DefaultHost) callNetwork(ctx context.Context, capability CapabilityInst
 		if err != nil {
 			return CallResult{}, markTransientNetworkError(err)
 		}
-		if shouldRetryHTTPStatus(capability.Meta, response.Status) {
+		if shouldRetryHTTPStatus(capability.Meta, response.Status, parsed.Method) {
 			return CallResult{}, retryableHTTPStatusError(response.Status, response.Headers)
 		}
 		return encodeNetworkHTTPFetchResponse(response), nil
@@ -507,10 +508,23 @@ func markTransientNetworkError(err error) error {
 	return err
 }
 
-func shouldRetryHTTPStatus(meta map[string]any, status int) bool {
+func shouldRetryHTTPStatus(meta map[string]any, status int, method string) bool {
 	statuses, ok := readIntList(meta, "retry_http_statuses", "retryHTTPStatuses")
 	if !ok {
 		return false
+	}
+	if methods, ok := readStringSliceAny(meta, "retry_http_methods", "retryHTTPMethods"); ok {
+		normalizedMethod := normalizeHTTPMethod(method)
+		matched := false
+		for _, candidate := range methods {
+			if normalizeHTTPMethod(candidate) == normalizedMethod {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
 	}
 	for _, candidate := range statuses {
 		if candidate == status {
@@ -518,6 +532,14 @@ func shouldRetryHTTPStatus(meta map[string]any, status int) bool {
 		}
 	}
 	return false
+}
+
+func normalizeHTTPMethod(method string) string {
+	method = strings.ToUpper(strings.TrimSpace(method))
+	if method == "" {
+		return http.MethodGet
+	}
+	return method
 }
 
 func retryableHTTPStatusError(status int, headers map[string]string) error {
@@ -841,6 +863,20 @@ func readStringSlice(values map[string]any, key string) []string {
 		return nil
 	}
 	return toStringSlice(value)
+}
+
+func readStringSliceAny(values map[string]any, keys ...string) ([]string, bool) {
+	if values == nil {
+		return nil, false
+	}
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok {
+			continue
+		}
+		return toStringSlice(value), true
+	}
+	return nil, false
 }
 
 func toStringSlice(value any) []string {
