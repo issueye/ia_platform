@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iavm/pkg/core"
 	"iavm/pkg/module"
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -37,6 +38,7 @@ type VM struct {
 	startedAt          int64
 	stepCount          int64
 	builtins           map[string]BuiltinFunc
+	retryRand          *rand.Rand
 }
 
 type Suspension struct {
@@ -52,6 +54,7 @@ type capabilityTimeoutProfile struct {
 	RetryBackoff    time.Duration
 	RetryMaxBackoff time.Duration
 	RetryMultiplier float64
+	RetryJitter     float64
 }
 
 func New(mod *module.Module, opts Options) (*VM, error) {
@@ -63,6 +66,7 @@ func New(mod *module.Module, opts Options) (*VM, error) {
 		functions: make([]CompiledFunction, 0),
 		handles:   NewHandleTable(),
 		builtins:  make(map[string]BuiltinFunc),
+		retryRand: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
 	// Index functions
@@ -204,7 +208,7 @@ func (vm *VM) WaitSuspension(ctx context.Context) error {
 		if state.WaitTimeout > 0 {
 			waitTimeout = state.WaitTimeout
 		}
-		result, err := vm.retryPollLike(ctx, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMultiplier, func() (api.PollResult, error) {
+		result, err := vm.retryPollLike(ctx, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
 			waitCtx, cancel := vm.hostOperationContext(ctx, waitTimeout)
 			defer cancel()
 			return waiter.Wait(waitCtx, state.PollHandleID)
@@ -260,7 +264,7 @@ func (vm *VM) waitSuspensionByPolling(ctx context.Context, state *promiseState) 
 		if state.HostTimeout > 0 {
 			pollTimeout = state.HostTimeout
 		}
-		result, err := vm.retryPollLike(ctx, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMultiplier, func() (api.PollResult, error) {
+		result, err := vm.retryPollLike(ctx, state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
 			pollCtx, cancel := vm.hostOperationContext(ctx, pollTimeout)
 			defer cancel()
 			return vm.options.Host.Poll(pollCtx, state.PollHandleID)
@@ -308,7 +312,7 @@ func (vm *VM) hostOperationContext(base context.Context, timeout time.Duration) 
 	return context.WithTimeout(base, timeout)
 }
 
-func (vm *VM) retryPollLike(ctx context.Context, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMultiplier float64, op func() (api.PollResult, error)) (api.PollResult, error) {
+func (vm *VM) retryPollLike(ctx context.Context, retryCount int, retryBackoff time.Duration, retryMaxBackoff time.Duration, retryMultiplier float64, retryJitter float64, op func() (api.PollResult, error)) (api.PollResult, error) {
 	attempts := retryCount + 1
 	if attempts <= 0 {
 		attempts = 1
@@ -324,11 +328,30 @@ func (vm *VM) retryPollLike(ctx context.Context, retryCount int, retryBackoff ti
 			return api.PollResult{}, err
 		}
 		backoff := computeRetryBackoff(attempt, retryBackoff, retryMultiplier, retryMaxBackoff)
+		backoff = vm.applyRetryJitter(backoff, retryJitter, retryMaxBackoff)
 		if err := vm.sleepBackoff(ctx, backoff); err != nil {
 			return api.PollResult{}, err
 		}
 	}
 	return api.PollResult{}, lastErr
+}
+
+func (vm *VM) applyRetryJitter(backoff time.Duration, ratio float64, max time.Duration) time.Duration {
+	if backoff <= 0 || ratio <= 0 {
+		return backoff
+	}
+	if vm.retryRand == nil {
+		return backoff
+	}
+	factor := 1 - ratio + (2 * ratio * vm.retryRand.Float64())
+	if factor < 0 {
+		factor = 0
+	}
+	jittered := time.Duration(float64(backoff) * factor)
+	if max > 0 && jittered > max {
+		return max
+	}
+	return jittered
 }
 
 func computeRetryBackoff(attempt int, base time.Duration, multiplier float64, max time.Duration) time.Duration {
@@ -441,6 +464,7 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 		RetryBackoff:    vm.options.RetryBackoff,
 		RetryMaxBackoff: vm.options.RetryMaxBackoff,
 		RetryMultiplier: vm.options.RetryMultiplier,
+		RetryJitter:     vm.options.RetryJitter,
 	}
 	config := vm.capabilityConfig(kind)
 	if len(config) == 0 {
@@ -463,6 +487,9 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	}
 	if multiplier, ok := readFloat(config, "retry_multiplier", "retryMultiplier"); ok {
 		profile.RetryMultiplier = multiplier
+	}
+	if jitter, ok := readFloat(config, "retry_jitter", "retryJitter"); ok {
+		profile.RetryJitter = jitter
 	}
 	return profile
 }
@@ -554,6 +581,7 @@ func (vm *VM) runFunctionSync(fnIdx uint32, args []core.Value, fnRef core.Value)
 		lastCapabilityID:   vm.lastCapabilityID,
 		lastCapabilityKind: vm.lastCapabilityKind,
 		builtins:           vm.builtins,
+		retryRand:          vm.retryRand,
 	}
 	if err := child.pushCallFrame(fnIdx, args, fnRef); err != nil {
 		return core.Value{}, err
@@ -587,7 +615,7 @@ func (vm *VM) resolveSuspendedValue(v core.Value) (core.Value, error) {
 		if state.HostTimeout > 0 {
 			pollTimeout = state.HostTimeout
 		}
-		result, err := vm.retryPollLike(vm.hostContext(), state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMultiplier, func() (api.PollResult, error) {
+		result, err := vm.retryPollLike(vm.hostContext(), state.RetryCount, state.RetryBackoff, state.RetryMaxBackoff, state.RetryMultiplier, state.RetryJitter, func() (api.PollResult, error) {
 			pollCtx, cancel := vm.hostOperationContext(vm.hostContext(), pollTimeout)
 			defer cancel()
 			return vm.options.Host.Poll(pollCtx, state.PollHandleID)

@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -584,6 +585,118 @@ func TestComputeRetryBackoffUsesMultiplierAndCap(t *testing.T) {
 	}
 	if got := computeRetryBackoff(3, 10*time.Millisecond, 2, 50*time.Millisecond); got != 50*time.Millisecond {
 		t.Fatalf("attempt3 backoff = %v, want 50ms cap", got)
+	}
+}
+
+func TestApplyRetryJitterUsesDeterministicSeed(t *testing.T) {
+	base := 10 * time.Millisecond
+
+	vmA := &VM{retryRand: rand.New(rand.NewSource(1))}
+	vmB := &VM{retryRand: rand.New(rand.NewSource(1))}
+
+	gotA := vmA.applyRetryJitter(base, 0.5, 0)
+	gotB := vmB.applyRetryJitter(base, 0.5, 0)
+	if gotA != gotB {
+		t.Fatalf("jittered backoff mismatch for same seed: %v vs %v", gotA, gotB)
+	}
+	if gotA == base {
+		t.Fatalf("expected jitter to change backoff, got %v", gotA)
+	}
+	if gotA < 5*time.Millisecond || gotA > 15*time.Millisecond {
+		t.Fatalf("jittered backoff = %v, want within [5ms,15ms]", gotA)
+	}
+
+	if got := vmA.applyRetryJitter(base, 0, 0); got != base {
+		t.Fatalf("zero jitter backoff = %v, want %v", got, base)
+	}
+
+	vmC := &VM{retryRand: rand.New(rand.NewSource(1))}
+	if got := vmC.applyRetryJitter(base, 1, 5*time.Millisecond); got != 5*time.Millisecond {
+		t.Fatalf("capped jitter backoff = %v, want 5ms", got)
+	}
+}
+
+func TestHostPollPendingPromisePreservesCapabilityRetryJitterProfile(t *testing.T) {
+	host := newMockHost()
+	host.pollResult = api.PollResult{
+		Done:  false,
+		Value: map[string]any{"ready": false},
+	}
+
+	mod := &module.Module{
+		Magic:     "IAVM",
+		Version:   1,
+		Target:    "ialang",
+		Types:     []core.FuncType{{}},
+		Constants: []any{"network", int64(39), "ready"},
+		Capabilities: []module.CapabilityDecl{
+			{
+				Kind: module.CapabilityNetwork,
+				Config: map[string]any{
+					"host_timeout_ms":  int64(5),
+					"retry_count":      int64(1),
+					"retry_backoff_ms": int64(1),
+					"retry_jitter":     float64(0.5),
+				},
+			},
+		},
+		Functions: []module.Function{
+			{
+				Name:      "entry",
+				TypeIndex: 0,
+				Code: []core.Instruction{
+					{Op: core.OpImportCap, A: 0},
+					{Op: core.OpConst, A: 1},
+					{Op: core.OpHostPoll},
+					{Op: core.OpAwait},
+					{Op: core.OpGetProp, A: 2},
+					{Op: core.OpReturn},
+				},
+			},
+		},
+	}
+
+	vm, err := New(mod, Options{Host: host})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	vm.retryRand = rand.New(rand.NewSource(1))
+
+	err = vm.Run()
+	if !errors.Is(err, ErrPromisePending) {
+		t.Fatalf("Run error = %v, want ErrPromisePending", err)
+	}
+
+	suspension := vm.SuspensionState()
+	if suspension == nil {
+		t.Fatal("expected suspension state")
+	}
+	state, ok := suspension.AwaitValue.Raw.(*promiseState)
+	if !ok || state == nil {
+		t.Fatal("expected pending promise state")
+	}
+	if state.RetryJitter != 0.5 {
+		t.Fatalf("retry jitter = %v, want 0.5", state.RetryJitter)
+	}
+
+	host.pollDeadlineFailures = 1
+	host.pollResult = api.PollResult{
+		Done:  true,
+		Value: map[string]any{"ready": true},
+	}
+	if err := vm.ResumeSuspension(); err != nil {
+		t.Fatalf("ResumeSuspension failed: %v", err)
+	}
+	if len(host.pollLog) < 3 {
+		t.Fatalf("expected resume retry attempts, got %#v", host.pollLog)
+	}
+
+	result, ok := vm.PopResult()
+	if !ok {
+		t.Fatal("expected resumed result on stack")
+	}
+	if result.Kind != core.ValueBool || !result.Raw.(bool) {
+		t.Fatalf("unexpected resumed result: %#v", result)
 	}
 }
 

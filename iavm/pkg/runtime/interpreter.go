@@ -465,7 +465,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if timeoutProfile.HostTimeout > 0 {
 			pollTimeout = timeoutProfile.HostTimeout
 		}
-		result, err := vm.retryPollLike(vm.hostContext(), timeoutProfile.RetryCount, timeoutProfile.RetryBackoff, timeoutProfile.RetryMaxBackoff, timeoutProfile.RetryMultiplier, func() (api.PollResult, error) {
+		result, err := vm.retryPollLike(vm.hostContext(), timeoutProfile.RetryCount, timeoutProfile.RetryBackoff, timeoutProfile.RetryMaxBackoff, timeoutProfile.RetryMultiplier, timeoutProfile.RetryJitter, func() (api.PollResult, error) {
 			hostCtx, cancel := vm.hostOperationContext(vm.hostContext(), pollTimeout)
 			defer cancel()
 			return vm.options.Host.Poll(hostCtx, handleID)
@@ -473,7 +473,7 @@ func (vm *VM) dispatch(inst core.Instruction, frame *Frame) error {
 		if err != nil {
 			return fmt.Errorf("host.poll failed: %w", err)
 		}
-		vm.stack.Push(promiseValueFromHostPoll(handleID, coreValueFromHostPoll(result), result.Done, result.Error, timeoutProfile.HostTimeout, timeoutProfile.WaitTimeout, timeoutProfile.RetryCount, timeoutProfile.RetryBackoff, timeoutProfile.RetryMaxBackoff, timeoutProfile.RetryMultiplier))
+		vm.stack.Push(promiseValueFromHostPoll(handleID, coreValueFromHostPoll(result), result.Done, result.Error, timeoutProfile.HostTimeout, timeoutProfile.WaitTimeout, timeoutProfile.RetryCount, timeoutProfile.RetryBackoff, timeoutProfile.RetryMaxBackoff, timeoutProfile.RetryMultiplier, timeoutProfile.RetryJitter))
 
 	case core.OpDup:
 		val := vm.stack.Peek(0)
