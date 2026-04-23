@@ -18,6 +18,7 @@ type Options struct {
 	RetryMultiplier      float64
 	RetryJitter          float64
 	RetryCallOps         []string
+	RetryCallOpPrefixes  []string
 	RetryExcludedCallOps []string
 	WaitInterval         time.Duration
 	Host                 api.Host

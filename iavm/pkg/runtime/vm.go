@@ -8,6 +8,7 @@ import (
 	"iavm/pkg/module"
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	"iacommon/pkg/host/api"
@@ -57,6 +58,7 @@ type capabilityTimeoutProfile struct {
 	RetryMultiplier      float64
 	RetryJitter          float64
 	RetryCallOps         []string
+	RetryCallOpPrefixes  []string
 	RetryExcludedCallOps []string
 }
 
@@ -528,6 +530,7 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 		RetryMultiplier:      vm.options.RetryMultiplier,
 		RetryJitter:          vm.options.RetryJitter,
 		RetryCallOps:         append([]string(nil), vm.options.RetryCallOps...),
+		RetryCallOpPrefixes:  append([]string(nil), vm.options.RetryCallOpPrefixes...),
 		RetryExcludedCallOps: append([]string(nil), vm.options.RetryExcludedCallOps...),
 	}
 	config := vm.capabilityConfig(kind)
@@ -561,6 +564,9 @@ func (vm *VM) capabilityTimeoutProfile(kind module.CapabilityKind) capabilityTim
 	if callOps, ok := readStringSlice(config, "retry_call_ops", "retryCallOps"); ok {
 		profile.RetryCallOps = callOps
 	}
+	if callOpPrefixes, ok := readStringSlice(config, "retry_call_op_prefixes", "retryCallOpPrefixes"); ok {
+		profile.RetryCallOpPrefixes = callOpPrefixes
+	}
 	if excludedCallOps, ok := readStringSlice(config, "retry_excluded_call_ops", "retryExcludedCallOps"); ok {
 		profile.RetryExcludedCallOps = excludedCallOps
 	}
@@ -573,6 +579,14 @@ func (profile capabilityTimeoutProfile) allowsHostCallRetry(opName string) bool 
 		if candidate == opName {
 			matched = true
 			break
+		}
+	}
+	if !matched {
+		for _, candidate := range profile.RetryCallOpPrefixes {
+			if candidate != "" && strings.HasPrefix(opName, candidate) {
+				matched = true
+				break
+			}
 		}
 	}
 	if !matched {
